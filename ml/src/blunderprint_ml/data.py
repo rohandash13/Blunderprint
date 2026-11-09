@@ -49,26 +49,39 @@ def build(pgn_path: str, out_dir: str, caps: dict | None = None, min_ply: int = 
     X = {s: np.zeros((caps[s], N_FEATURES), dtype=np.uint8) for s in caps}
     y = {s: np.zeros(caps[s], dtype=np.int16) for s in caps}
     rb = {s: np.zeros(caps[s], dtype=np.uint8) for s in caps}
-    nl = {s: np.zeros(caps[s], dtype=np.int16) for s in caps}
     ply_arr = {s: np.zeros(caps[s], dtype=np.int16) for s in caps}
-    L = {s: np.zeros((caps[s], 512), dtype=np.uint8) for s in ("val", "test") if s in caps}
+    # Legal masks and legal-move counts are only needed for evaluation, so only val/test pay for them.
+    eval_splits = [s for s in ("val", "test") if s in caps]
+    L = {s: np.zeros((caps[s], 512), dtype=np.uint8) for s in eval_splits}
+    nl = {s: np.zeros(caps[s], dtype=np.int16) for s in eval_splits}
     n = {s: 0 for s in caps}
+
+    def wanted_split(h) -> str | None:
+        white, black = h.get("White"), h.get("Black")
+        if not white or not black or "?" in (white, black):
+            return None                       # anonymous players would all share one split bucket
+        split = game_split(white, black)
+        if split is None or split not in caps or n[split] >= caps[split]:
+            return None
+        if not (h.get("WhiteElo", "").isdigit() and h.get("BlackElo", "").isdigit()):
+            return None
+        if _base_seconds(h.get("TimeControl", "")) < min_base_seconds:
+            return None
+        return split
+
+    class _HeaderFilter(chess.pgn.GameBuilder):
+        """Skips parsing the moves of games that will not be used (most of them, once train is full)."""
+        def end_headers(self):
+            return chess.pgn.SKIP if wanted_split(self.game.headers) is None else None
 
     with _open(pgn_path) as fh:
         while any(n[s] < caps[s] for s in caps):
-            game = chess.pgn.read_game(fh)
+            game = chess.pgn.read_game(fh, Visitor=_HeaderFilter)
             if game is None:
                 break
             h = game.headers
-            white, black = h.get("White"), h.get("Black")
-            if not white or not black or "?" in (white, black):
-                continue                      # anonymous players would all share one split bucket
-            split = game_split(white, black)
-            if split is None or split not in caps or n[split] >= caps[split]:
-                continue
-            if not (h.get("WhiteElo", "").isdigit() and h.get("BlackElo", "").isdigit()):
-                continue
-            if _base_seconds(h.get("TimeControl", "")) < min_base_seconds:
+            split = wanted_split(h)
+            if split is None:
                 continue
             board = game.board()
             for ply, move in enumerate(game.mainline_moves()):
@@ -78,10 +91,10 @@ def build(pgn_path: str, out_dir: str, caps: dict | None = None, min_ply: int = 
                     X[split][i] = encode_board(board)
                     y[split][i] = move_index(move, board.turn == chess.BLACK)
                     rb[split][i] = rating_bucket(rating)
-                    mask = legal_mask(board)
-                    nl[split][i] = int(mask.sum())
                     ply_arr[split][i] = ply
                     if split in L:
+                        mask = legal_mask(board)
+                        nl[split][i] = int(mask.sum())
                         L[split][i] = np.packbits(mask)
                     n[split] += 1
                 board.push(move)
@@ -91,10 +104,10 @@ def build(pgn_path: str, out_dir: str, caps: dict | None = None, min_ply: int = 
         np.save(os.path.join(out_dir, f"X_{s}.npy"), X[s][:k])
         np.save(os.path.join(out_dir, f"y_{s}.npy"), y[s][:k])
         np.save(os.path.join(out_dir, f"rb_{s}.npy"), rb[s][:k])
-        np.save(os.path.join(out_dir, f"nlegal_{s}.npy"), nl[s][:k])
         np.save(os.path.join(out_dir, f"ply_{s}.npy"), ply_arr[s][:k])
         if s in L:
             np.save(os.path.join(out_dir, f"L_{s}.npy"), L[s][:k])
+            np.save(os.path.join(out_dir, f"nlegal_{s}.npy"), nl[s][:k])
     with open(os.path.join(out_dir, "meta.json"), "w") as f:
         json.dump({"counts": n, "caps": caps, "source": os.path.basename(pgn_path), "min_ply": min_ply,
                    "sample_prob": sample_prob, "seed": seed, "min_base_seconds": min_base_seconds,

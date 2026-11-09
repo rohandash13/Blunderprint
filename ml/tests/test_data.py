@@ -75,6 +75,8 @@ def test_build_writes_arrays_and_respects_split(tmp_path):
     legal = np.unpackbits(np.load(out / "L_test.npy"), axis=1).astype(bool)
     y_test = np.load(out / "y_test.npy")
     assert legal[np.arange(len(y_test)), y_test].all()
+    assert np.array_equal(np.load(out / "nlegal_test.npy"), legal.sum(axis=1))
+    assert not (out / "nlegal_train.npy").exists()
 
 
 def test_build_drops_games_between_players_in_different_splits(tmp_path):

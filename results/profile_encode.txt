@@ -1,2 +1,5 @@
-total=39.7s encode_board_cumulative=9.3s fraction=0.23
-GATE: skip Rust; profile shows encoding is not the bottleneck
+total=20.9s encoder_cumulative=9.6s fraction=0.46
+  encode_board=9.6s (0.46)
+  legal_mask=0.0s (0.00)
+  move_index=0.0s (0.00)
+GATE: build the Rust encoder (Task 21)
