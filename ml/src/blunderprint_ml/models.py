@@ -43,9 +43,13 @@ def masked_top1(logits: torch.Tensor, packed_mask: torch.Tensor, y: torch.Tensor
     return masked.argmax(dim=1) == y
 
 
-def load_checkpoint(path: str) -> nn.Module:
-    ck = torch.load(path, map_location="cpu", weights_only=True)
+def model_from_checkpoint(ck: dict) -> nn.Module:
+    """Build an eval-mode model from an already-loaded checkpoint dict."""
     model = build_model(ck["model"], **ck["config"])
     model.load_state_dict(ck["state_dict"])
     model.eval()
     return model
+
+
+def load_checkpoint(path: str) -> nn.Module:
+    return model_from_checkpoint(torch.load(path, map_location="cpu", weights_only=True))

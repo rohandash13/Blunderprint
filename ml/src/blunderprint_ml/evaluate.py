@@ -5,7 +5,7 @@ import os
 import numpy as np
 import torch
 
-from .models import load_checkpoint, masked_top1
+from .models import masked_top1, model_from_checkpoint
 
 
 def evaluate(data_dir: str, checkpoints: dict[str, str], out_path: str) -> dict:
@@ -33,8 +33,8 @@ def evaluate(data_dir: str, checkpoints: dict[str, str], out_path: str) -> dict:
     results["uniform"] = {"top1": float(uniform.mean()),
                           "by_bucket": {int(b): float(uniform[rb.numpy() == b].mean())
                                         for b in np.unique(rb.numpy())}}
-    for name, path in checkpoints.items():
-        model = load_checkpoint(path)
+    for name in checkpoints:
+        model = model_from_checkpoint(ckpts[name])
         correct = []
         with torch.no_grad():
             for i in range(0, len(y), 4096):

@@ -28,6 +28,7 @@ Spec: `docs/superpowers/specs/2026-11-08-blunderprint-design.md`
 - Java sends Python each move's data (FEN, played/best move, CPL, clock) and Python returns `p_played` and `tags`. Java owns storage and aggregation.
 - Model baselines: uniform-over-legal-moves and a linear model, then an MLP. A CNN is optional (Task 13, last step).
 - **Added after measuring (Task 10):** the worker pool claims `workers.batch-size` (default 4) jobs per call and writes their results in one transaction (`JobQueueRepository.completeBatch`), and records engine/claim/complete timings (`/admin/workers/stats`). The baseline showed 7.5 ms of database time per job at 1 worker (about 25% of worker time); batching cut it to about 2 ms and raised throughput 12-28% on the same 3,450 positions. See `results/loadtest_timing.json` (before) and `results/loadtest_batched.json` (after).
+- Implementation deviations: (a) the dataset builder skips parsing the moves of games that fall outside the needed splits at the header level, and computes legal masks and legal-move counts (`L`, `nlegal`) only for the eval splits (val/test); (b) the model service returns 422 `{id, reason}` naming the offending move id for invalid input (bad FEN, illegal played or best move); (c) `AnalysisService` marks a run `FAILED` after 3 failed scoring attempts, or immediately on a 4xx from the model service, instead of retrying forever.
 
 ## File Structure
 
@@ -2301,7 +2302,7 @@ git add -A && git commit -m "feat: board and move encoding"
 - Consumes: `encode_board`, `move_index`, `legal_mask`, `rating_bucket`
 - Produces: `split_of(name: str) -> str` (`"test"` if `md5 % 10 == 0`, `"val"` if `== 1`, else `"train"`)
 - Produces: `game_split(white: str, black: str) -> str | None` (the shared split, or `None` if they differ)
-- Produces: `build(pgn_path, out_dir, caps={"train":500_000,"val":20_000,"test":50_000}, min_ply=10, sample_prob=0.33, seed=0, min_base_seconds=180)` writing, per split, `X_{split}.npy` (uint8 N×772), `y_{split}.npy` (int16), `rb_{split}.npy` (uint8), `nlegal_{split}.npy` (int16), `ply_{split}.npy`, and for `val`/`test` only `L_{split}.npy` (`np.packbits` of the legal mask, N×512 uint8), plus `meta.json` with counts and the dump file name.
+- Produces: `build(pgn_path, out_dir, caps={"train":500_000,"val":20_000,"test":50_000}, min_ply=10, sample_prob=0.33, seed=0, min_base_seconds=180)` writing, per split, `X_{split}.npy` (uint8 N×772), `y_{split}.npy` (int16), `rb_{split}.npy` (uint8), `ply_{split}.npy`, and for `val`/`test` only `nlegal_{split}.npy` (int16) and `L_{split}.npy` (`np.packbits` of the legal mask, N×512 uint8), plus `meta.json` with counts and the dump file name.
 
 - [ ] **Step 1: Write the failing test**
 

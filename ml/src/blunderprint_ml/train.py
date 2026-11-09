@@ -57,7 +57,7 @@ def train(model_name, data_dir, out_path, epochs=5, batch=1024, lr=1e-3, seed=0,
             os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
             torch.save({"model": model_name, "state_dict": model.state_dict(), "config": config,
                         "train_args": {"epochs": epochs, "batch": batch, "lr": lr, "seed": seed,
-                                       "best_epoch": epoch + 1,"data_dir": data_dir}}, out_path)
+                                       "best_epoch": epoch + 1, "data_dir": data_dir}}, out_path)
     return hist
 
 
