@@ -943,7 +943,10 @@ public class LichessClient {
     public List<LichessGame> fetchGames(String username, int max) {
         String url = baseUrl + "/api/games/user/" + URLEncoder.encode(username, StandardCharsets.UTF_8)
             + "?max=" + max + "&rated=true&perfType=blitz,rapid,classical&moves=true&clocks=true&pgnInJson=false";
-        HttpRequest.Builder rb = HttpRequest.newBuilder(URI.create(url)).header("Accept", "application/x-ndjson");
+        // Lichess rejects default client user agents on this endpoint (404), so identify ourselves.
+        HttpRequest.Builder rb = HttpRequest.newBuilder(URI.create(url))
+            .header("Accept", "application/x-ndjson")
+            .header("User-Agent", "blunderprint/0.1");
         if (!token.isBlank()) rb.header("Authorization", "Bearer " + token);
         try {
             HttpResponse<java.util.stream.Stream<String>> resp =
