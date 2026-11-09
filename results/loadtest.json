@@ -1,0 +1,44 @@
+{
+  "username": "thibault",
+  "games": 60,
+  "depth": 12,
+  "cpu_count": 20,
+  "scaling": [
+    {
+      "workers": 1,
+      "seconds": 188.24,
+      "fens": 5225,
+      "fens_per_sec": 27.76
+    },
+    {
+      "workers": 2,
+      "seconds": 109.55,
+      "fens": 5225,
+      "fens_per_sec": 47.69
+    },
+    {
+      "workers": 4,
+      "seconds": 90.91,
+      "fens": 5225,
+      "fens_per_sec": 57.47
+    },
+    {
+      "workers": 8,
+      "seconds": 52.4,
+      "fens": 5225,
+      "fens_per_sec": 99.72
+    },
+    {
+      "workers": 16,
+      "seconds": 45.92,
+      "fens": 5225,
+      "fens_per_sec": 113.79
+    }
+  ],
+  "warm_cache": {
+    "enqueued": 0,
+    "total": 5225,
+    "cache_hit_rate": 1.0,
+    "seconds": 0.04
+  }
+}
