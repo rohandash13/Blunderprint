@@ -26,6 +26,7 @@ public class WorkerPool {
     private final boolean autostart;
     private final int reaperTimeoutSeconds;
     private final int maxAttempts;
+    private final int batchSize;
     private final List<Thread> threads = new ArrayList<>();
     private volatile boolean running = false;
 
@@ -52,7 +53,9 @@ public class WorkerPool {
                       @Value("${workers.count}") int defaultCount,
                       @Value("${workers.autostart}") boolean autostart,
                       @Value("${workers.reaper-timeout-seconds}") int reaperTimeoutSeconds,
-                      @Value("${workers.max-attempts}") int maxAttempts) {
+                      @Value("${workers.max-attempts}") int maxAttempts,
+                      @Value("${workers.batch-size:4}") int batchSize) {
+        this.batchSize = batchSize;
         this.queue = queue;
         this.enginePath = enginePath;
         this.defaultCount = defaultCount;
@@ -101,22 +104,20 @@ public class WorkerPool {
         try {
             while (running) {
                 long c0 = System.nanoTime();
-                List<Job> jobs = queue.claim(workerId, 1);
+                List<Job> jobs = queue.claim(workerId, batchSize);
                 if (jobs.isEmpty()) {
                     Thread.sleep(200);
                     continue;
                 }
                 claimNs.add(System.nanoTime() - c0);
+                List<JobQueueRepository.Completed> done = new ArrayList<>();
                 for (Job job : jobs) {
                     try {
                         if (engine == null) engine = new StockfishEngine(enginePath);
                         long e0 = System.nanoTime();
                         EngineResult r = engine.analyze(job.fenKey(), job.depth());
                         engineNs.add(System.nanoTime() - e0);
-                        long w0 = System.nanoTime();
-                        queue.complete(job, r);
-                        completeNs.add(System.nanoTime() - w0);
-                        jobsDone.increment();
+                        done.add(new JobQueueRepository.Completed(job, r));
                     } catch (Exception e) {
                         log.warn("{} failed job {}: {}", workerId, job.id(), e.toString());
                         queue.fail(job.id(), String.valueOf(e), maxAttempts);
@@ -124,6 +125,10 @@ public class WorkerPool {
                         engine = null;
                     }
                 }
+                long w0 = System.nanoTime();
+                queue.completeBatch(done);
+                completeNs.add(System.nanoTime() - w0);
+                jobsDone.add(done.size());
             }
         } catch (InterruptedException ignored) {
             // stop requested

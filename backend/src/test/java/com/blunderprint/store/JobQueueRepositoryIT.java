@@ -47,6 +47,18 @@ class JobQueueRepositoryIT extends PostgresIT {
     }
 
     @Test
+    void completeBatchStoresAllResultsAndMarksJobsDone() {
+        queue.enqueueForRun(seedRun("a", "b"));           // 4 distinct positions
+        List<Job> jobs = queue.claim("w1", 4);
+        assertEquals(4, jobs.size());
+        queue.completeBatch(jobs.stream()
+            .map(j -> new JobQueueRepository.Completed(j, new EngineResult("e2e4", 10, "e2e4"))).toList());
+        assertEquals(4L, jdbc.queryForObject("select count(*) from eval_cache", Long.class));
+        assertEquals(4L, jdbc.queryForObject("select count(*) from eval_job where status = 'DONE'", Long.class));
+        queue.completeBatch(List.of());                    // empty batch is a no-op
+    }
+
+    @Test
     void failRetriesThenGivesUp() {
         queue.enqueueForRun(seedRun("a"));
         Job j = queue.claim("w1", 1).get(0);

@@ -52,6 +52,33 @@ public class JobQueueRepository {
         });
     }
 
+    public record Completed(Job job, EngineResult result) {}
+
+    /** Stores many results and marks their jobs DONE in one transaction (far fewer round trips than complete()). */
+    public void completeBatch(List<Completed> done) {
+        if (done.isEmpty()) return;
+        tx.executeWithoutResult(s -> {
+            jdbc.batchUpdate("""
+                insert into eval_cache (fen_key, engine, depth, multipv, best_uci, score_cp, pv)
+                values (?, ?, ?, 1, ?, ?, ?) on conflict do nothing
+                """, done, done.size(), (ps, c) -> {
+                    ps.setString(1, c.job().fenKey());
+                    ps.setString(2, c.job().engine());
+                    ps.setInt(3, c.job().depth());
+                    ps.setString(4, c.result().bestUci());
+                    ps.setInt(5, c.result().scoreCp());
+                    ps.setString(6, c.result().pv());
+                });
+            Long[] ids = done.stream().map(c -> c.job().id()).toArray(Long[]::new);
+            jdbc.update(con -> {
+                var ps = con.prepareStatement(
+                    "update eval_job set status = 'DONE', locked_by = null, locked_at = null where id = any(?)");
+                ps.setArray(1, con.createArrayOf("bigint", ids));
+                return ps;
+            });
+        });
+    }
+
     public void fail(long jobId, String error, int maxAttempts) {
         jdbc.update("""
             update eval_job set attempts = attempts + 1, last_error = ?, locked_by = null, locked_at = null,

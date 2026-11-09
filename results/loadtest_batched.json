@@ -1,0 +1,95 @@
+{
+  "username": "thibault",
+  "games": 30,
+  "depth": 12,
+  "cpu_count": 20,
+  "reps": 2,
+  "scaling": [
+    {
+      "workers": 1,
+      "rep": 0,
+      "seconds": 73.47,
+      "fens": 3450,
+      "fens_per_sec": 46.96,
+      "engine_ms_per_job": 19.04,
+      "db_ms_per_job": 2.11,
+      "db_share_of_worker_time": 0.0997
+    },
+    {
+      "workers": 1,
+      "rep": 1,
+      "seconds": 82.45,
+      "fens": 3450,
+      "fens_per_sec": 41.84,
+      "engine_ms_per_job": 21.68,
+      "db_ms_per_job": 2.09,
+      "db_share_of_worker_time": 0.0877
+    },
+    {
+      "workers": 8,
+      "rep": 0,
+      "seconds": 28.77,
+      "fens": 3450,
+      "fens_per_sec": 119.9,
+      "engine_ms_per_job": 60.79,
+      "db_ms_per_job": 3.35,
+      "db_share_of_worker_time": 0.0523
+    },
+    {
+      "workers": 8,
+      "rep": 1,
+      "seconds": 27.69,
+      "fens": 3450,
+      "fens_per_sec": 124.59,
+      "engine_ms_per_job": 58.78,
+      "db_ms_per_job": 3.09,
+      "db_share_of_worker_time": 0.05
+    },
+    {
+      "workers": 16,
+      "rep": 0,
+      "seconds": 27.89,
+      "fens": 3450,
+      "fens_per_sec": 123.69,
+      "engine_ms_per_job": 109.36,
+      "db_ms_per_job": 11.04,
+      "db_share_of_worker_time": 0.0917
+    },
+    {
+      "workers": 16,
+      "rep": 1,
+      "seconds": 25.42,
+      "fens": 3450,
+      "fens_per_sec": 135.69,
+      "engine_ms_per_job": 100.8,
+      "db_ms_per_job": 9.27,
+      "db_share_of_worker_time": 0.0843
+    }
+  ],
+  "summary": {
+    "1": {
+      "mean": 44.4,
+      "min": 41.84,
+      "max": 46.96,
+      "speedup_vs_first": 1.0
+    },
+    "8": {
+      "mean": 122.25,
+      "min": 119.9,
+      "max": 124.59,
+      "speedup_vs_first": 2.75
+    },
+    "16": {
+      "mean": 129.69,
+      "min": 123.69,
+      "max": 135.69,
+      "speedup_vs_first": 2.92
+    }
+  },
+  "warm_cache": {
+    "enqueued": 0,
+    "total": 3450,
+    "cache_hit_rate": 1.0,
+    "seconds": 0.02
+  }
+}

@@ -27,6 +27,7 @@ Spec: `docs/superpowers/specs/2026-11-08-blunderprint-design.md`
 - The `time_trouble` tag is kept; it needs Lichess `clocks=true` and a `clock_cs` column.
 - Java sends Python each move's data (FEN, played/best move, CPL, clock) and Python returns `p_played` and `tags`. Java owns storage and aggregation.
 - Model baselines: uniform-over-legal-moves and a linear model, then an MLP. A CNN is optional (Task 13, last step).
+- **Added after measuring (Task 10):** the worker pool claims `workers.batch-size` (default 4) jobs per call and writes their results in one transaction (`JobQueueRepository.completeBatch`), and records engine/claim/complete timings (`/admin/workers/stats`). The baseline showed 7.5 ms of database time per job at 1 worker (about 25% of worker time); batching cut it to about 2 ms and raised throughput 12-28% on the same 3,450 positions. See `results/loadtest_timing.json` (before) and `results/loadtest_batched.json` (after).
 
 ## File Structure
 
