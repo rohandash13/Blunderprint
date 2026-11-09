@@ -2,10 +2,10 @@ import os
 from contextlib import asynccontextmanager
 
 import chess
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from .inference import p_played
+from .inference import p_played_batch
 from .models import load_checkpoint
 from .tags import tag_move
 
@@ -30,6 +30,10 @@ class MoveOut(BaseModel):
     tags: list[str]
 
 
+def _invalid(move_id: int, reason: str) -> HTTPException:
+    return HTTPException(status_code=422, detail={"id": move_id, "reason": reason})
+
+
 def create_app() -> FastAPI:
     state = {}
 
@@ -46,18 +50,34 @@ def create_app() -> FastAPI:
 
     @app.post("/analyze", response_model=list[MoveOut])
     def analyze(req: AnalyzeRequest):
-        out = []
+        boards, playeds, bests = [], [], []
         for m in req.moves:
-            board = chess.Board(m.fen)
-            played = chess.Move.from_uci(m.played_uci)
-            best = chess.Move.from_uci(m.best_uci) if m.best_uci else None
+            try:
+                board = chess.Board(m.fen)
+            except ValueError as e:
+                raise _invalid(m.id, f"invalid FEN: {e}")
+            try:
+                played = chess.Move.from_uci(m.played_uci)
+            except ValueError as e:
+                raise _invalid(m.id, f"invalid played_uci: {e}")
+            if played not in board.legal_moves:
+                raise _invalid(m.id, f"illegal played_uci {m.played_uci} in position")
+            best = None
+            if m.best_uci is not None:
+                try:
+                    best = chess.Move.from_uci(m.best_uci)
+                except ValueError as e:
+                    raise _invalid(m.id, f"invalid best_uci: {e}")
+            boards.append(board)
+            playeds.append(played)
+            bests.append(best)
+
+        probs = p_played_batch(state["model"], boards, playeds, [m.rating for m in req.moves])
+        out = []
+        for m, board, played, best, p in zip(req.moves, boards, playeds, bests, probs):
             # Without a centipawn loss there is nothing to tag against, so no tags.
             tags = [] if m.cpl is None else tag_move(board, played, best, m.cpl, m.clock_cs)
-            out.append(MoveOut(
-                id=m.id,
-                p_played=p_played(state["model"], m.fen, m.rating, m.played_uci),
-                tags=tags,
-            ))
+            out.append(MoveOut(id=m.id, p_played=p, tags=tags))
         return out
 
     return app
