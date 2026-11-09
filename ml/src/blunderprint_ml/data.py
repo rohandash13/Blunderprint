@@ -5,6 +5,7 @@ import json
 import os
 import random
 import re
+import time
 
 import chess
 import chess.pgn
@@ -39,7 +40,10 @@ def _base_seconds(tc: str) -> int:
 
 def build(pgn_path: str, out_dir: str, caps: dict | None = None, min_ply: int = 10,
           sample_prob: float = 0.33, seed: int = 0, min_base_seconds: int = 180) -> None:
+    t0 = time.perf_counter()
     caps = caps or DEFAULT_CAPS
+    if set(caps) - set(DEFAULT_CAPS):
+        raise ValueError(f"unknown split(s) in caps: {sorted(set(caps) - set(DEFAULT_CAPS))}")
     os.makedirs(out_dir, exist_ok=True)
     rng = random.Random(seed)
     X = {s: np.zeros((caps[s], N_FEATURES), dtype=np.uint8) for s in caps}
@@ -56,7 +60,9 @@ def build(pgn_path: str, out_dir: str, caps: dict | None = None, min_ply: int = 
             if game is None:
                 break
             h = game.headers
-            white, black = h.get("White", "?"), h.get("Black", "?")
+            white, black = h.get("White"), h.get("Black")
+            if not white or not black or "?" in (white, black):
+                continue                      # anonymous players would all share one split bucket
             split = game_split(white, black)
             if split is None or split not in caps or n[split] >= caps[split]:
                 continue
@@ -90,8 +96,9 @@ def build(pgn_path: str, out_dir: str, caps: dict | None = None, min_ply: int = 
         if s in L:
             np.save(os.path.join(out_dir, f"L_{s}.npy"), L[s][:k])
     with open(os.path.join(out_dir, "meta.json"), "w") as f:
-        json.dump({"counts": n, "source": os.path.basename(pgn_path), "min_ply": min_ply,
-                   "sample_prob": sample_prob, "seed": seed}, f, indent=2)
+        json.dump({"counts": n, "caps": caps, "source": os.path.basename(pgn_path), "min_ply": min_ply,
+                   "sample_prob": sample_prob, "seed": seed, "min_base_seconds": min_base_seconds,
+                   "seconds": round(time.perf_counter() - t0, 1)}, f, indent=2)
 
 
 if __name__ == "__main__":
@@ -99,5 +106,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("pgn")
     ap.add_argument("--out", default="data/processed")
+    ap.add_argument("--train", type=int, default=DEFAULT_CAPS["train"])
+    ap.add_argument("--val", type=int, default=DEFAULT_CAPS["val"])
+    ap.add_argument("--test", type=int, default=DEFAULT_CAPS["test"])
+    ap.add_argument("--sample-prob", type=float, default=0.33)
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--min-base-seconds", type=int, default=180)
     args = ap.parse_args()
-    build(args.pgn, args.out)
+    build(args.pgn, args.out, caps={"train": args.train, "val": args.val, "test": args.test},
+          sample_prob=args.sample_prob, seed=args.seed, min_base_seconds=args.min_base_seconds)

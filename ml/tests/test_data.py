@@ -71,3 +71,27 @@ def test_build_writes_arrays_and_respects_split(tmp_path):
     assert y.min() >= 0 and y.max() < 4096
     assert np.load(out / "L_test.npy").shape == (meta["counts"]["test"], 512)
     assert not (out / "L_train.npy").exists()
+    # Every label must be a legal move in its position.
+    legal = np.unpackbits(np.load(out / "L_test.npy"), axis=1).astype(bool)
+    y_test = np.load(out / "y_test.npy")
+    assert legal[np.arange(len(y_test)), y_test].all()
+
+
+def test_build_drops_games_between_players_in_different_splits(tmp_path):
+    tr = _names_in("train", 1)[0]
+    te = _names_in("test", 1)[0]
+    same = tmp_path / "same.pgn"
+    _write_games(same, tr, _names_in("train", 2)[1], 4, seed=3)
+    mixed = tmp_path / "mixed.pgn"
+    _write_games(mixed, tr, te, 4, seed=4)
+    both = tmp_path / "both.pgn"
+    both.write_text(mixed.read_text() + same.read_text())
+    caps = {"train": 1000, "val": 10, "test": 1000}
+
+    build(str(same), str(tmp_path / "a"), caps=caps, sample_prob=1.0)
+    build(str(both), str(tmp_path / "b"), caps=caps, sample_prob=1.0)
+
+    a = json.loads((tmp_path / "a" / "meta.json").read_text())["counts"]
+    b = json.loads((tmp_path / "b" / "meta.json").read_text())["counts"]
+    assert a == b and b["test"] == 0
+    assert np.array_equal(np.load(tmp_path / "a" / "X_train.npy"), np.load(tmp_path / "b" / "X_train.npy"))
