@@ -1,0 +1,2 @@
+total=39.7s encode_board_cumulative=9.3s fraction=0.23
+GATE: skip Rust; profile shows encoding is not the bottleneck
