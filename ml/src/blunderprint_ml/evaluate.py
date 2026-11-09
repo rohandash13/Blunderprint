@@ -19,7 +19,16 @@ def evaluate(data_dir: str, checkpoints: dict[str, str], out_path: str) -> dict:
         by_bucket = {int(b): float(correct[rb.numpy() == b].mean()) for b in np.unique(rb.numpy())}
         return {"top1": float(correct.mean()), "by_bucket": by_bucket}
 
-    results = {"n_test": int(len(y))}
+    meta_path = os.path.join(data_dir, "meta.json")
+    dataset_meta = None
+    if os.path.exists(meta_path):
+        with open(meta_path) as f:
+            dataset_meta = json.load(f)
+    ckpts = {name: torch.load(p, map_location="cpu", weights_only=True) for name, p in checkpoints.items()}
+    provenance = {"dataset": dataset_meta,
+                  "checkpoints": {name: {"path": checkpoints[name], "config": ck.get("config"),
+                                         "train_args": ck.get("train_args")} for name, ck in ckpts.items()}}
+    results = {"n_test": int(len(y)), "provenance": provenance}
     uniform = 1.0 / nlegal
     results["uniform"] = {"top1": float(uniform.mean()),
                           "by_bucket": {int(b): float(uniform[rb.numpy() == b].mean())
@@ -47,4 +56,4 @@ if __name__ == "__main__":
     ap.add_argument("--out", default="../results/model_eval.json")
     args = ap.parse_args()
     r = evaluate(args.data, {"linear": args.linear, "mlp": args.mlp}, args.out)
-    print(json.dumps({k: (v["top1"] if isinstance(v, dict) else v) for k, v in r.items()}, indent=2))
+    print(json.dumps({k: v["top1"] for k, v in r.items() if isinstance(v, dict) and "top1" in v}, indent=2))

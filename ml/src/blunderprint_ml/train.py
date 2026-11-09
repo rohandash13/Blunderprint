@@ -55,7 +55,9 @@ def train(model_name, data_dir, out_path, epochs=5, batch=1024, lr=1e-3, seed=0,
         if acc > best:
             best = acc
             os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-            torch.save({"model": model_name, "state_dict": model.state_dict(), "config": config}, out_path)
+            torch.save({"model": model_name, "state_dict": model.state_dict(), "config": config,
+                        "train_args": {"epochs": epochs, "batch": batch, "lr": lr, "seed": seed,
+                                       "best_epoch": epoch + 1,"data_dir": data_dir}}, out_path)
     return hist
 
 
@@ -68,5 +70,9 @@ if __name__ == "__main__":
     ap.add_argument("--epochs", type=int, default=5)
     ap.add_argument("--batch", type=int, default=1024)
     ap.add_argument("--lr", type=float, default=1e-3)
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--hidden", type=int, default=1024, help="MLP hidden width (ignored for linear)")
     args = ap.parse_args()
-    train(args.model, args.data, args.out, args.epochs, args.batch, args.lr)
+    extra = {"hidden": args.hidden} if args.model == "mlp" else {}
+    hist = train(args.model, args.data, args.out, args.epochs, args.batch, args.lr, args.seed, **extra)
+    print(hist)

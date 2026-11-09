@@ -44,7 +44,7 @@ def masked_top1(logits: torch.Tensor, packed_mask: torch.Tensor, y: torch.Tensor
 
 
 def load_checkpoint(path: str) -> nn.Module:
-    ck = torch.load(path, map_location="cpu")
+    ck = torch.load(path, map_location="cpu", weights_only=True)
     model = build_model(ck["model"], **ck["config"])
     model.load_state_dict(ck["state_dict"])
     model.eval()
