@@ -153,6 +153,13 @@ services:
   <properties>
     <java.version>21</java.version>
   </properties>
+  <repositories>
+    <!-- chesslib is published on JitPack, not Maven Central -->
+    <repository>
+      <id>jitpack.io</id>
+      <url>https://jitpack.io</url>
+    </repository>
+  </repositories>
   <dependencies>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-jdbc</artifactId></dependency>

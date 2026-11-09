@@ -1,0 +1,24 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/blunderprint}
+    username: ${DB_USER:chess}
+    password: ${DB_PASSWORD:chess}
+  flyway:
+    enabled: true
+engine:
+  path: ${STOCKFISH_PATH:stockfish}
+  version: ${ENGINE_VERSION:stockfish-local}
+  depth: 12
+workers:
+  count: 2
+  autostart: true
+  reaper-timeout-seconds: 120
+  max-attempts: 3
+lichess:
+  base-url: https://lichess.org
+  token: ${LICHESS_TOKEN:}
+model:
+  url: ${MODEL_URL:http://localhost:8000}
+report:
+  mistake-cpl: 100
+  min-p-played: 0.15
