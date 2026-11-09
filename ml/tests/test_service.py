@@ -132,6 +132,15 @@ def test_illegal_played_uci_returns_422_naming_id(client):
     assert "illegal" in r.json()["detail"]["reason"]
 
 
+def test_illegal_best_uci_returns_422_naming_id(client):
+    body = {"moves": [{"id": 11, "fen": chess.STARTING_FEN, "rating": 1500, "played_uci": "a2a3",
+                       "best_uci": "e4e5", "cpl": 300, "clock_cs": None}]}
+    r = client.post("/analyze", json=body)
+    assert r.status_code == 422
+    assert r.json()["detail"]["id"] == 11
+    assert "illegal best_uci" in r.json()["detail"]["reason"]
+
+
 def test_unparseable_best_uci_returns_422_naming_id(client):
     body = {"moves": [{"id": 8, "fen": chess.STARTING_FEN, "rating": 1500, "played_uci": "e2e4",
                        "best_uci": "zz", "cpl": 10, "clock_cs": None}]}

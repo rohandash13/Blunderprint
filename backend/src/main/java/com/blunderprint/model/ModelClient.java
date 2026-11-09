@@ -1,11 +1,13 @@
 package com.blunderprint.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -23,7 +25,14 @@ public class ModelClient {
 
     @Autowired
     public ModelClient(@Value("${model.url}") String url) {
-        this(RestClient.builder().baseUrl(url).build());
+        this(RestClient.builder().baseUrl(url).requestFactory(timeouts()).build());
+    }
+
+    private static SimpleClientHttpRequestFactory timeouts() {
+        var factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(5));
+        factory.setReadTimeout(Duration.ofSeconds(60));
+        return factory;
     }
 
     ModelClient(RestClient client) {

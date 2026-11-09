@@ -11,6 +11,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 
 class AnalysisServiceIT extends PostgresIT {
     @Autowired AnalysisService analysis;
@@ -73,5 +76,52 @@ class AnalysisServiceIT extends PostgresIT {
         analysis.tick();
         assertEquals("DONE", analysis.progress(run).status());
         assertEquals(0L, jdbc.queryForObject("select count(*) from move_analysis", Long.class));
+    }
+
+    private void seedEvals() {
+        jdbc.update("insert into eval_cache(fen_key, engine, depth, best_uci, score_cp) values ('A','sf',10,'d2d4',30)");
+        jdbc.update("insert into eval_cache(fen_key, engine, depth, best_uci, score_cp) values ('B','sf',10,'e7e5',200)");
+    }
+
+    @Test
+    void clientErrorFromModelFailsRunImmediately() {
+        UUID run = seed();
+        seedEvals();
+        when(model.analyze(anyList())).thenThrow(HttpClientErrorException.create(
+            HttpStatus.UNPROCESSABLE_ENTITY, "Unprocessable", null, new byte[0], null));
+        analysis.tick();
+        assertEquals("FAILED", analysis.progress(run).status());
+    }
+
+    @Test
+    void serverErrorsAreRetriedThenSucceed() {
+        UUID run = seed();
+        seedEvals();
+        when(model.analyze(anyList()))
+            .thenThrow(HttpServerErrorException.create(HttpStatus.BAD_GATEWAY, "Bad Gateway", null, new byte[0], null))
+            .thenThrow(HttpServerErrorException.create(HttpStatus.BAD_GATEWAY, "Bad Gateway", null, new byte[0], null))
+            .thenAnswer(inv -> {
+                List<ModelClient.MoveIn> in = inv.getArgument(0);
+                return List.of(new ModelClient.MoveOut(in.get(0).id(), 0.4, List.of()));
+            });
+        analysis.tick();
+        assertEquals("SCORING", analysis.progress(run).status());
+        analysis.tick();
+        assertEquals("SCORING", analysis.progress(run).status());
+        analysis.tick();
+        assertEquals("DONE", analysis.progress(run).status());
+    }
+
+    @Test
+    void persistentServerErrorsFailRunAfterThreeAttempts() {
+        UUID run = seed();
+        seedEvals();
+        when(model.analyze(anyList())).thenThrow(
+            HttpServerErrorException.create(HttpStatus.BAD_GATEWAY, "Bad Gateway", null, new byte[0], null));
+        analysis.tick();
+        analysis.tick();
+        assertEquals("SCORING", analysis.progress(run).status());
+        analysis.tick();
+        assertEquals("FAILED", analysis.progress(run).status());
     }
 }

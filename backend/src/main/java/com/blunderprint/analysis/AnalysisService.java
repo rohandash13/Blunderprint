@@ -6,9 +6,11 @@ import com.blunderprint.model.ModelClient.MoveOut;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Service;
 public class AnalysisService {
     private static final Logger log = LoggerFactory.getLogger(AnalysisService.class);
     private static final int MODEL_BATCH = 256;
+    private static final int MAX_SCORING_ATTEMPTS = 3;
 
     public record Progress(String status, long totalFens, long doneFens, long failedFens) {}
 
@@ -24,6 +27,7 @@ public class AnalysisService {
 
     private final JdbcTemplate jdbc;
     private final ModelClient model;
+    private final ConcurrentHashMap<UUID, Integer> scoringFailures = new ConcurrentHashMap<>();
 
     public AnalysisService(JdbcTemplate jdbc, ModelClient model) {
         this.jdbc = jdbc;
@@ -58,8 +62,18 @@ public class AnalysisService {
                 jdbc.update("update analysis_run set status = 'SCORING' where id = ?", run);
                 score(run);
                 jdbc.update("update analysis_run set status = 'DONE' where id = ?", run);
+                scoringFailures.remove(run);
             } catch (Exception e) {
-                log.warn("scoring run {} failed, will retry: {}", run, e.toString());
+                int attempts = scoringFailures.merge(run, 1, Integer::sum);
+                if (e instanceof HttpClientErrorException || attempts >= MAX_SCORING_ATTEMPTS) {
+                    // The run table has no error column, so the reason is only logged.
+                    log.error("scoring run {} failed (attempt {}), marking FAILED: {}", run, attempts, e.toString());
+                    jdbc.update("update analysis_run set status = 'FAILED' where id = ?", run);
+                    scoringFailures.remove(run);
+                } else {
+                    log.warn("scoring run {} failed (attempt {}/{}), will retry: {}", run, attempts,
+                        MAX_SCORING_ATTEMPTS, e.toString());
+                }
             }
         }
     }

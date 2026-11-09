@@ -68,6 +68,8 @@ def create_app() -> FastAPI:
                     best = chess.Move.from_uci(m.best_uci)
                 except ValueError as e:
                     raise _invalid(m.id, f"invalid best_uci: {e}")
+                if best not in board.legal_moves:
+                    raise _invalid(m.id, f"illegal best_uci {m.best_uci} in position")
             boards.append(board)
             playeds.append(played)
             bests.append(best)
