@@ -34,6 +34,7 @@ def main() -> None:
     ap.add_argument("--games", type=int, default=40)
     ap.add_argument("--depth", type=int, default=12)
     ap.add_argument("--workers", type=int, nargs="+", default=[1, 2, 4, 8])
+    ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--out", default="results/loadtest")
     args = ap.parse_args()
 
@@ -48,18 +49,34 @@ def main() -> None:
 
     results = []
     for n in args.workers:
-        with db.cursor() as cur:
-            cur.execute("truncate eval_cache, eval_job")
-        requests.post(f"{BASE}/admin/workers", json={"count": 0})
-        requests.post(f"{BASE}/analysis/{run_id}/reenqueue")
-        t0 = time.time()
-        requests.post(f"{BASE}/admin/workers", json={"count": n})
-        prog = wait_until_done(run_id)
-        secs = time.time() - t0
-        row = {"workers": n, "seconds": round(secs, 2), "fens": prog["doneFens"],
-               "fens_per_sec": round(prog["doneFens"] / secs, 2)}
-        print(row)
-        results.append(row)
+        for rep in range(args.reps):
+            with db.cursor() as cur:
+                cur.execute("truncate eval_cache, eval_job")
+            requests.post(f"{BASE}/admin/workers", json={"count": 0})
+            requests.post(f"{BASE}/analysis/{run_id}/reenqueue")
+            requests.post(f"{BASE}/admin/workers/stats/reset")
+            t0 = time.time()
+            requests.post(f"{BASE}/admin/workers", json={"count": n})
+            prog = wait_until_done(run_id)
+            secs = time.time() - t0
+            st = requests.get(f"{BASE}/admin/workers/stats").json()
+            jobs = max(st["jobs"], 1)
+            engine_ms = st["engineNs"] / jobs / 1e6
+            db_ms = (st["claimNs"] + st["completeNs"]) / jobs / 1e6
+            row = {"workers": n, "rep": rep, "seconds": round(secs, 2), "fens": prog["doneFens"],
+                   "fens_per_sec": round(prog["doneFens"] / secs, 2),
+                   "engine_ms_per_job": round(engine_ms, 2), "db_ms_per_job": round(db_ms, 2),
+                   "db_share_of_worker_time": round(db_ms / (db_ms + engine_ms), 4)}
+            print(row, flush=True)
+            results.append(row)
+
+    summary = {}
+    for n in args.workers:
+        vals = [r["fens_per_sec"] for r in results if r["workers"] == n]
+        summary[n] = {"mean": round(sum(vals) / len(vals), 2), "min": min(vals), "max": max(vals)}
+    base = summary[args.workers[0]]["mean"]
+    for n in summary:
+        summary[n]["speedup_vs_first"] = round(summary[n]["mean"] / base, 2)
 
     # Warm cache: same player again without truncating.
     again = requests.post(f"{BASE}/analysis", json={
@@ -72,13 +89,18 @@ def main() -> None:
     print("warm:", warm)
 
     out = {"username": args.username, "games": args.games, "depth": args.depth,
-           "cpu_count": os.cpu_count(), "scaling": results, "warm_cache": warm}
+           "cpu_count": os.cpu_count(), "reps": args.reps, "scaling": results, "summary": summary,
+           "warm_cache": warm}
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with open(args.out + ".json", "w") as f:
         json.dump(out, f, indent=2)
 
     plt.figure(figsize=(5, 3.5))
-    plt.plot([r["workers"] for r in results], [r["fens_per_sec"] for r in results], marker="o")
+    ks = list(args.workers)
+    means = [summary[k]["mean"] for k in ks]
+    lo = [summary[k]["mean"] - summary[k]["min"] for k in ks]
+    hi = [summary[k]["max"] - summary[k]["mean"] for k in ks]
+    plt.errorbar(ks, means, yerr=[lo, hi], marker="o", capsize=3)
     plt.xlabel("Stockfish workers")
     plt.ylabel("positions / second")
     plt.title(f"Analysis throughput (depth {args.depth}, {os.cpu_count()} CPUs)")

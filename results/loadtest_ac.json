@@ -1,0 +1,152 @@
+{
+  "username": "thibault",
+  "games": 30,
+  "depth": 12,
+  "cpu_count": 20,
+  "reps": 3,
+  "scaling": [
+    {
+      "workers": 1,
+      "rep": 0,
+      "seconds": 153.56,
+      "fens": 3450,
+      "fens_per_sec": 22.47
+    },
+    {
+      "workers": 1,
+      "rep": 1,
+      "seconds": 150.41,
+      "fens": 3450,
+      "fens_per_sec": 22.94
+    },
+    {
+      "workers": 1,
+      "rep": 2,
+      "seconds": 112.89,
+      "fens": 3450,
+      "fens_per_sec": 30.56
+    },
+    {
+      "workers": 2,
+      "rep": 0,
+      "seconds": 81.7,
+      "fens": 3450,
+      "fens_per_sec": 42.23
+    },
+    {
+      "workers": 2,
+      "rep": 1,
+      "seconds": 85.57,
+      "fens": 3450,
+      "fens_per_sec": 40.32
+    },
+    {
+      "workers": 2,
+      "rep": 2,
+      "seconds": 81.91,
+      "fens": 3450,
+      "fens_per_sec": 42.12
+    },
+    {
+      "workers": 4,
+      "rep": 0,
+      "seconds": 58.1,
+      "fens": 3450,
+      "fens_per_sec": 59.38
+    },
+    {
+      "workers": 4,
+      "rep": 1,
+      "seconds": 60.6,
+      "fens": 3450,
+      "fens_per_sec": 56.93
+    },
+    {
+      "workers": 4,
+      "rep": 2,
+      "seconds": 48.62,
+      "fens": 3450,
+      "fens_per_sec": 70.96
+    },
+    {
+      "workers": 8,
+      "rep": 0,
+      "seconds": 36.1,
+      "fens": 3450,
+      "fens_per_sec": 95.56
+    },
+    {
+      "workers": 8,
+      "rep": 1,
+      "seconds": 37.84,
+      "fens": 3450,
+      "fens_per_sec": 91.18
+    },
+    {
+      "workers": 8,
+      "rep": 2,
+      "seconds": 37.77,
+      "fens": 3450,
+      "fens_per_sec": 91.34
+    },
+    {
+      "workers": 16,
+      "rep": 0,
+      "seconds": 33.67,
+      "fens": 3450,
+      "fens_per_sec": 102.47
+    },
+    {
+      "workers": 16,
+      "rep": 1,
+      "seconds": 31.9,
+      "fens": 3450,
+      "fens_per_sec": 108.17
+    },
+    {
+      "workers": 16,
+      "rep": 2,
+      "seconds": 32.2,
+      "fens": 3450,
+      "fens_per_sec": 107.14
+    }
+  ],
+  "summary": {
+    "1": {
+      "mean": 25.32,
+      "min": 22.47,
+      "max": 30.56,
+      "speedup_vs_first": 1.0
+    },
+    "2": {
+      "mean": 41.56,
+      "min": 40.32,
+      "max": 42.23,
+      "speedup_vs_first": 1.64
+    },
+    "4": {
+      "mean": 62.42,
+      "min": 56.93,
+      "max": 70.96,
+      "speedup_vs_first": 2.47
+    },
+    "8": {
+      "mean": 92.69,
+      "min": 91.18,
+      "max": 95.56,
+      "speedup_vs_first": 3.66
+    },
+    "16": {
+      "mean": 105.93,
+      "min": 102.47,
+      "max": 108.17,
+      "speedup_vs_first": 4.18
+    }
+  },
+  "warm_cache": {
+    "enqueued": 0,
+    "total": 3450,
+    "cache_hit_rate": 1.0,
+    "seconds": 0.03
+  }
+}

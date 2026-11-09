@@ -57,6 +57,17 @@ public class AnalysisController {
         return Map.of("jobsEnqueued", queue.enqueueForRun(runId));
     }
 
+    @GetMapping("/admin/workers/stats")
+    public Map<String, Long> workerStats() {
+        return pool.stats();
+    }
+
+    @PostMapping("/admin/workers/stats/reset")
+    public Map<String, Boolean> resetWorkerStats() {
+        pool.resetStats();
+        return Map.of("reset", true);
+    }
+
     @PostMapping("/admin/workers")
     public Map<String, Integer> workers(@RequestBody WorkersRequest req) {
         pool.start(req.count());

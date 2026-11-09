@@ -35,5 +35,8 @@ class WorkerPoolIT extends PostgresIT {
         pool.stop();
         assertEquals(2L, jdbc.queryForObject("select count(*) from eval_cache", Long.class));
         assertEquals(2L, jdbc.queryForObject("select count(*) from eval_job where status = 'DONE'", Long.class));
+        var stats = pool.stats();
+        assertEquals(2L, stats.get("jobs"));
+        assertTrue(stats.get("engineNs") > 0 && stats.get("claimNs") > 0 && stats.get("completeNs") > 0);
     }
 }

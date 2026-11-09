@@ -8,6 +8,8 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.LongAdder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +28,24 @@ public class WorkerPool {
     private final int maxAttempts;
     private final List<Thread> threads = new ArrayList<>();
     private volatile boolean running = false;
+
+    // Time accounting, to separate database overhead from engine time.
+    private final LongAdder claimNs = new LongAdder();
+    private final LongAdder engineNs = new LongAdder();
+    private final LongAdder completeNs = new LongAdder();
+    private final LongAdder jobsDone = new LongAdder();
+
+    public Map<String, Long> stats() {
+        return Map.of("jobs", jobsDone.sum(), "claimNs", claimNs.sum(),
+            "engineNs", engineNs.sum(), "completeNs", completeNs.sum());
+    }
+
+    public void resetStats() {
+        claimNs.reset();
+        engineNs.reset();
+        completeNs.reset();
+        jobsDone.reset();
+    }
 
     public WorkerPool(JobQueueRepository queue,
                       @Value("${engine.path}") String enginePath,
@@ -80,16 +100,23 @@ public class WorkerPool {
         StockfishEngine engine = null;
         try {
             while (running) {
+                long c0 = System.nanoTime();
                 List<Job> jobs = queue.claim(workerId, 1);
                 if (jobs.isEmpty()) {
                     Thread.sleep(200);
                     continue;
                 }
+                claimNs.add(System.nanoTime() - c0);
                 for (Job job : jobs) {
                     try {
                         if (engine == null) engine = new StockfishEngine(enginePath);
+                        long e0 = System.nanoTime();
                         EngineResult r = engine.analyze(job.fenKey(), job.depth());
+                        engineNs.add(System.nanoTime() - e0);
+                        long w0 = System.nanoTime();
                         queue.complete(job, r);
+                        completeNs.add(System.nanoTime() - w0);
+                        jobsDone.increment();
                     } catch (Exception e) {
                         log.warn("{} failed job {}: {}", workerId, job.id(), e.toString());
                         queue.fail(job.id(), String.valueOf(e), maxAttempts);
