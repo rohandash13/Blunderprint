@@ -29,6 +29,7 @@ export class Mic {
 
   async start(onChunk: (pcm: ArrayBuffer) => void): Promise<void> {
     this.ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
+    await this.ctx.resume();
     const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
     await this.ctx.audioWorklet.addModule(url);
     URL.revokeObjectURL(url);

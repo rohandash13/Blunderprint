@@ -56,7 +56,8 @@ export default function App() {
     },
   };
 
-  async function onEvent(e: AgentEvent) {
+  async function onEvent(e: AgentEvent, s: AgentSocket) {
+    if (e.type !== "Audio") console.debug("[agent]", e.type, e);
     recorder.current?.record(e);
     switch (e.type) {
       case "ConversationText":
@@ -78,10 +79,11 @@ export default function App() {
           } catch (err) {
             result = { error: err instanceof Error ? err.message : String(err) };
           }
-          if (!cancelled.current.has(f.id)) socket.current?.respond(f.id, f.name, JSON.stringify(result));
+          if (!cancelled.current.has(f.id)) s.respond(f.id, f.name, JSON.stringify(result));
         }
         break;
       case "Error":
+        stopVoice();
         setError(String(e.description ?? "Deepgram error"));
         setStatus("error");
         break;
@@ -89,41 +91,58 @@ export default function App() {
   }
 
   async function startVoice() {
+    stopVoice();
     setError(null);
     setStatus("connecting");
     try {
       const res = await fetch("/voice/token");
-      const body = await res.json();
+      let body: { token?: string; error?: string };
+      try {
+        body = await res.json();
+      } catch {
+        throw new Error(`Backend unavailable (HTTP ${res.status})`);
+      }
       if (!res.ok) throw new Error(body.error ?? `token request failed (${res.status})`);
       player.current = player.current ?? new Player();
       await player.current.resume();
       recorder.current = new LatencyRecorder(DEFAULT_CONFIG.thinkModel);
-      const s = new AgentSocket(buildSettings(DEFAULT_CONFIG, username), {
-        onEvent: (e) => void onEvent(e),
-        onAudio: (c) => player.current?.play(c),
+      const s: AgentSocket = new AgentSocket(buildSettings(DEFAULT_CONFIG, username), {
+        onEvent: (e) => {
+          if (socket.current === s) void onEvent(e, s);
+        },
+        onAudio: (c) => {
+          if (socket.current === s) player.current?.play(c);
+        },
         onClose: (reason) => {
+          if (socket.current !== s) return;
           mic.current?.stop();
+          player.current?.stop();
+          socket.current = null;
           setStatus((st) => (st === "live" ? "error" : st));
           setError((er) => er ?? `Voice disconnected: ${reason}`);
         },
       });
       socket.current = s;
-      await s.connect(body.token);
+      await s.connect(body.token as string);
+      if (socket.current !== s) return;
       mic.current = new Mic();
       await mic.current.start((pcm) => s.sendAudio(pcm));
+      if (socket.current !== s) return;
       setStatus("live");
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setError((er) => er ?? msg);
       setStatus("error");
       stopVoice();
     }
   }
 
   function stopVoice() {
-    mic.current?.stop();
-    socket.current?.close();
-    player.current?.stop();
+    const s = socket.current;
     socket.current = null;
+    mic.current?.stop();
+    s?.close();
+    player.current?.stop();
     setStatus((st) => (st === "error" ? st : "idle"));
   }
 
@@ -209,7 +228,7 @@ export default function App() {
               {report.patterns.map((p) => (
                 <div key={p.tag} className="pattern">
                   <strong>{p.tag.replace(/_/g, " ")}</strong> × {p.count} (avg {Math.round(p.avgCpl)} cp)
-                  <button onClick={() => handleFunctionCall("show_mistake", { tag: p.tag, index: 0 }, coach.current, effects)}>Show</button>
+                  <button onClick={() => { coach.current.drill = null; void handleFunctionCall("show_mistake", { tag: p.tag, index: 0 }, coach.current, effects); }}>Show</button>
                   <button onClick={() => handleFunctionCall("start_drill", { tag: p.tag }, coach.current, effects)}>Drill</button>
                 </div>
               ))}
