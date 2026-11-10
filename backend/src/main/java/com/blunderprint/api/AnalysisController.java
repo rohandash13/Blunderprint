@@ -2,6 +2,7 @@ package com.blunderprint.api;
 
 import com.blunderprint.analysis.AnalysisService;
 import com.blunderprint.ingest.IngestService;
+import com.blunderprint.report.ReportService;
 import com.blunderprint.store.JobQueueRepository;
 import com.blunderprint.worker.WorkerPool;
 import java.util.Map;
@@ -21,14 +22,26 @@ public class AnalysisController {
     private final JobQueueRepository queue;
     private final WorkerPool pool;
     private final int defaultDepth;
+    private final ReportService reports;
 
     public AnalysisController(IngestService ingest, AnalysisService analysis, JobQueueRepository queue,
-                              WorkerPool pool, @Value("${engine.depth}") int defaultDepth) {
+                              WorkerPool pool, @Value("${engine.depth}") int defaultDepth, ReportService reports) {
         this.ingest = ingest;
         this.analysis = analysis;
         this.queue = queue;
         this.pool = pool;
         this.defaultDepth = defaultDepth;
+        this.reports = reports;
+    }
+
+    @GetMapping("/players/{username}/report")
+    public ResponseEntity<ReportService.Report> report(@PathVariable String username) {
+        return reports.report(username).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/players/{username}/mistakes")
+    public java.util.List<ReportService.MistakeRow> mistakes(@PathVariable String username) {
+        return reports.mistakes(username);
     }
 
     @GetMapping("/health")
