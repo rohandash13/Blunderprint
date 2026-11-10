@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 /** Mints short-lived Deepgram tokens so the browser never sees the API key. */
 @Component
@@ -43,11 +44,15 @@ public class DeepgramTokenClient {
 
     public Grant grant(int ttlSeconds) {
         if (!configured()) throw new IllegalStateException("DEEPGRAM_API_KEY is not set");
-        return client.post().uri("/v1/auth/grant")
+        Grant g = client.post().uri("/v1/auth/grant")
             .header("Authorization", "Token " + apiKey)
             .contentType(MediaType.APPLICATION_JSON)
             .body(Map.of("ttl_seconds", ttlSeconds))
             .retrieve()
             .body(Grant.class);
+        if (g == null || g.accessToken() == null || g.accessToken().isBlank()) {
+            throw new RestClientException("Deepgram grant response had no access_token");
+        }
+        return g;
     }
 }

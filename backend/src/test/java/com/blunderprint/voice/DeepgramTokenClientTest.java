@@ -41,4 +41,12 @@ class DeepgramTokenClientTest {
         server.expect(requestTo("http://dg/v1/auth/grant")).andRespond(withUnauthorizedRequest());
         assertThrows(RestClientException.class, () -> new DeepgramTokenClient(b.build(), "bad").grant(30));
     }
+
+    @Test
+    void responseWithoutTokenIsAnError() {
+        RestClient.Builder b = RestClient.builder().baseUrl("http://dg");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(b).build();
+        server.expect(requestTo("http://dg/v1/auth/grant")).andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+        assertThrows(RestClientException.class, () -> new DeepgramTokenClient(b.build(), "k").grant(30));
+    }
 }

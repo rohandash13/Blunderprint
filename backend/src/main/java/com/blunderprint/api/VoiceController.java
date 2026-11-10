@@ -30,7 +30,9 @@ public class VoiceController {
         } catch (IllegalStateException e) {
             return ResponseEntity.status(503).body(Map.of("error", e.getMessage()));
         } catch (RestClientException e) {
-            log.warn("deepgram token request failed: {}", e.getClass().getSimpleName());
+            String status = e instanceof org.springframework.web.client.RestClientResponseException r
+                ? String.valueOf(r.getStatusCode().value()) : "no response";
+            log.warn("deepgram token request failed: {} (HTTP {})", e.getClass().getSimpleName(), status);
             return ResponseEntity.status(503).body(Map.of("error", "Deepgram token request failed"));
         }
     }
