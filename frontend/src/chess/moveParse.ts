@@ -10,7 +10,7 @@ const NUMBER_WORDS: Record<string, string> = {
 };
 const PROMO_WORDS = new Set(["promote", "promotes", "promoting", "promotion", "equals"]);
 const CAPTURE_WORDS = new Set(["takes", "take", "captures", "capture", "x"]);
-const CASTLE_WORDS = new Set(["castle", "castles", "castling", "kingside", "queenside", "short", "long"]);
+const CASTLE_WORDS = new Set(["castle", "castles", "castling", "kingside", "queenside", "short", "long", "side"]);
 const FILLER_WORDS = new Set([
   "to", "the", "my", "move", "moves", "play", "plays", "i", "ill", "will", "go", "goes", "with",
   "on", "at", "check", "checkmate", "mate", "please", "and", "then", "um", "uh", "okay", "ok",
@@ -95,12 +95,22 @@ export function parseMove(fen: string, input: string): Move | null {
   // Anything we do not understand (negations included) means we cannot trust the reading.
   if (tokens.length === 0 || !tokens.every(isKnownToken)) return null;
 
-  const castleWords = tokens.filter((t) => CASTLE_WORDS.has(t));
-  if (castleWords.length > 0) {
-    const long = castleWords.some((t) => t === "queenside" || t === "long");
-    const short = castleWords.some((t) => t === "kingside" || t === "short");
-    const rest = tokens.filter((t) => !CASTLE_WORDS.has(t) && !FILLER_WORDS.has(t));
-    if (rest.length > 0 || (long && short)) return null;
+  // "castle king side" / "castle queen side": king/queen right before "side" is a direction, not a piece.
+  const sideDirs = new Set<number>();
+  tokens.forEach((t, i) => {
+    if (t === "side" && (tokens[i - 1] === "king" || tokens[i - 1] === "queen")) sideDirs.add(i - 1);
+  });
+  const castleWords = tokens.filter((t) => CASTLE_WORDS.has(t) && t !== "side");
+  if (castleWords.length > 0 || tokens.includes("side")) {
+    const long =
+      castleWords.some((t) => t === "queenside" || t === "long") ||
+      [...sideDirs].some((i) => tokens[i] === "queen");
+    const short =
+      castleWords.some((t) => t === "kingside" || t === "short") ||
+      [...sideDirs].some((i) => tokens[i] === "king");
+    const rest = tokens.filter((t, i) => !CASTLE_WORDS.has(t) && !FILLER_WORDS.has(t) && !sideDirs.has(i));
+    const strayWord = tokens.some((t, i) => t === "side" && !sideDirs.has(i - 1));
+    if (castleWords.length === 0 || rest.length > 0 || strayWord || long === short) return null;
     return castle(legal, long ? "O-O-O" : "O-O");
   }
 
@@ -112,8 +122,12 @@ export function parseMove(fen: string, input: string): Move | null {
   const fromFile = files[0];
 
   const promoAt = tokens.findIndex((t) => PROMO_WORDS.has(t));
-  const beforePromo = promoAt >= 0 ? tokens.slice(0, promoAt) : tokens;
-  const pieces = new Set(beforePromo.map((t) => PIECE_WORDS[t]).filter(Boolean));
+  const captureAt = tokens.findIndex((t) => CAPTURE_WORDS.has(t));
+  // Only piece words before the capture word / promotion name the mover. A piece named after
+  // "takes" is the victim ("knight takes bishop e5"); it is allowed but NOT verified, the move
+  // only has to be a capture of something.
+  const moverEnd = Math.min(...[promoAt, captureAt].filter((i) => i >= 0), tokens.length);
+  const pieces = new Set(tokens.slice(0, moverEnd).map((t) => PIECE_WORDS[t]).filter(Boolean));
   if (pieces.size > 1) return null;
   const pieceWord = [...pieces][0];
 

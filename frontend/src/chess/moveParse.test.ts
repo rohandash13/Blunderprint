@@ -111,4 +111,28 @@ describe("parseMove", () => {
     expect(parseMove(START, "night f3")?.san).toBe("Nf3");
     expect(parseMove(START, "I'll play knight to f3")?.san).toBe("Nf3");
   });
+
+  it("allows naming the captured piece after the capture word", () => {
+    const bishop = "4k3/8/8/4b3/8/5N2/8/4K3 w - - 0 1";
+    expect(parseMove(bishop, "knight takes bishop e5")?.san).toBe("Nxe5");
+    expect(parseMove(bishop, "knight takes bishop on e5")?.san).toBe("Nxe5");
+    expect(parseMove("4r1k1/8/8/8/8/8/8/Q3K3 w - - 0 1", "queen takes rook e1")).toBeNull();
+    expect(parseMove("6k1/8/8/8/8/8/8/Q3r1K1 w - - 0 1", "queen takes rook e1")?.san).toBe("Qxe1");
+    // The victim name is not verified: any capture on the square is accepted.
+    expect(parseMove("4k3/8/8/4p3/8/5N2/8/4K3 w - - 0 1", "knight takes bishop e5")?.san).toBe("Nxe5");
+    // Still fail-closed when nothing is captured.
+    expect(parseMove("4k3/8/8/8/8/5N2/8/4K3 w - - 0 1", "knight takes bishop e5")).toBeNull();
+  });
+
+  it("accepts two-word castling", () => {
+    const fen = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1";
+    expect(parseMove(fen, "castle king side")?.san).toBe("O-O");
+    expect(parseMove(fen, "castles king side")?.san).toBe("O-O");
+    expect(parseMove(fen, "castle queen side")?.san).toBe("O-O-O");
+    expect(parseMove(fen, "castle kingside")?.san).toBe("O-O");
+    const noRights = "r3k2r/8/8/8/8/8/8/R3K2R w - - 0 1";
+    expect(parseMove(noRights, "castle king side")).toBeNull();
+    expect(parseMove(fen, "king side")).toBeNull();
+    expect(parseMove(fen, "castle king queen side")).toBeNull();
+  });
 });
