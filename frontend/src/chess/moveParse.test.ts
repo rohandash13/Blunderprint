@@ -3,6 +3,9 @@ import { parseMove, tokenize } from "./moveParse";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
+const QUEEN_FEN = "4k3/8/8/8/8/8/8/3QK3 w - - 0 1";
+const KINGS_FEN = "4k3/8/8/8/8/8/8/4K3 w - - 0 1";
+
 describe("tokenize", () => {
   it("joins spoken file and rank and maps number words", () => {
     expect(tokenize("Knight to F three.")).toEqual(["knight", "to", "f3"]);
@@ -47,5 +50,65 @@ describe("parseMove", () => {
     expect(parseMove(START, "knight e5")).toBeNull();
     expect(parseMove(START, "banana")).toBeNull();
     expect(parseMove(START, "")).toBeNull();
+  });
+
+  it("reads single-letter piece prefixes", () => {
+    expect(parseMove(START, "N f3")?.san).toBe("Nf3");
+    expect(parseMove(START, "n f3")?.san).toBe("Nf3");
+    expect(parseMove("4k3/8/8/8/8/8/8/R6K w - - 0 1", "R e1")?.san).toMatch(/^Re1/);
+    expect(parseMove(QUEEN_FEN, "Q h5")?.san).toMatch(/^Qh5/);
+    expect(parseMove(KINGS_FEN, "K e2")?.san).toMatch(/^Ke2/);
+    expect(parseMove(KINGS_FEN, "k e2")?.san).toMatch(/^Ke2/);
+  });
+
+  it("rejects words it does not understand, including negations", () => {
+    expect(parseMove(START, "don't play knight f3")).toBeNull();
+    expect(parseMove(START, "dont play knight f3")).toBeNull();
+    expect(parseMove(START, "not e4")).toBeNull();
+    expect(parseMove(START, "never e4")).toBeNull();
+    expect(parseMove(START, "knight banana f3")).toBeNull();
+  });
+
+  it("rejects more than two squares", () => {
+    expect(parseMove(START, "e2 e4 e5")).toBeNull();
+  });
+
+  it("requires a capture when a capture word is spoken", () => {
+    const capture = "4k3/8/8/4p3/8/5N2/8/4K3 w - - 0 1";
+    const empty = "4k3/8/8/8/8/5N2/8/4K3 w - - 0 1";
+    expect(parseMove(capture, "Knight takes e5")?.san).toBe("Nxe5");
+    expect(parseMove(empty, "knight e5")?.san).toBe("Ne5");
+    expect(parseMove(empty, "knight takes e5")).toBeNull();
+  });
+
+  it("refuses promotion to king or pawn", () => {
+    const fen = "8/P6k/8/8/8/8/8/K7 w - - 0 1";
+    expect(parseMove(fen, "a8 promote to king")).toBeNull();
+    expect(parseMove(fen, "a8 promote to pawn")).toBeNull();
+    expect(parseMove(fen, "a8 promote to")?.promotion).toBe("q");
+  });
+
+  it("accepts castling notations and short/long", () => {
+    const fen = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1";
+    for (const s of ["0-0", "O-O", "o-o", "castle short"]) expect(parseMove(fen, s)?.san).toBe("O-O");
+    for (const s of ["0-0-0", "O-O-O", "o-o-o", "castle long"]) expect(parseMove(fen, s)?.san).toBe("O-O-O");
+  });
+
+  it("returns null when castling is not legal", () => {
+    const noRights = "r3k2r/8/8/8/8/8/8/R3K2R w - - 0 1";
+    expect(parseMove(noRights, "castle kingside")).toBeNull();
+    expect(parseMove(noRights, "0-0")).toBeNull();
+  });
+
+  it("returns null for an invalid FEN instead of throwing", () => {
+    expect(parseMove("not a fen", "e4")).toBeNull();
+    expect(parseMove("", "Nf3")).toBeNull();
+  });
+
+  it("parses realistic phrasings", () => {
+    expect(parseMove("4k3/8/8/8/8/8/8/4KB2 w - - 0 1", "bishop to c4 check")?.san).toBe("Bc4");
+    expect(parseMove(QUEEN_FEN, "queen h5")?.san).toMatch(/^Qh5/);
+    expect(parseMove(START, "night f3")?.san).toBe("Nf3");
+    expect(parseMove(START, "I'll play knight to f3")?.san).toBe("Nf3");
   });
 });
