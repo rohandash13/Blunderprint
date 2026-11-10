@@ -11,3 +11,6 @@ checkpoints/
 *.egg-info/
 .idea/
 .vscode/
+
+# Local secrets
+.env
