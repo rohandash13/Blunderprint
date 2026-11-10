@@ -123,7 +123,8 @@ export default function App() {
         },
       });
       socket.current = s;
-      await s.connect(body.token as string);
+      if (typeof body.token !== "string" || !body.token) throw new Error("Token response had no token");
+      await s.connect(body.token);
       if (socket.current !== s) return;
       mic.current = new Mic();
       await mic.current.start((pcm) => s.sendAudio(pcm));
