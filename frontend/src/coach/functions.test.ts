@@ -105,4 +105,23 @@ describe("handleFunctionCall", () => {
   it("unknown function names are reported", async () => {
     expect(await handleFunctionCall("launch_rockets", {}, newCoachState(), effects())).toEqual({ error: "unknown function launch_rockets" });
   });
+
+  it("show_mistake accepts numeric strings but rejects missing or junk indexes", async () => {
+    const s = newCoachState();
+    const ok = (await handleFunctionCall("show_mistake", { tag: "hanging_piece", index: "1" }, s, effects())) as Record<string, unknown>;
+    expect(ok.played).toBe("Nh6");
+    for (const index of [undefined, null, "", true, -1, 1.5, "abc"]) {
+      expect(await handleFunctionCall("show_mistake", { tag: "hanging_piece", index }, s, effects()))
+        .toEqual({ error: "index out of range", examples: 2 });
+    }
+  });
+
+  it("a drill allows one attempt, then needs start_drill again", async () => {
+    const s = newCoachState();
+    await handleFunctionCall("start_drill", { tag: "hanging_piece" }, s, effects());
+    await handleFunctionCall("play_move", { move: "e4" }, s, effects());
+    expect(await handleFunctionCall("play_move", { move: "d4" }, s, effects()))
+      .toEqual({ error: "no drill in progress; call start_drill first" });
+  });
 });
+

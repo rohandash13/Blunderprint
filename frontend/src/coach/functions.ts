@@ -83,6 +83,7 @@ export async function handleFunctionCall(
     if (j.verdict === "illegal") return { verdict: j.verdict, reason: j.reason };
     fx.playOnBoard(j.uci!);
     state.drilled.add(keyOf(ex));
+    state.drill = null; // one attempt per drill; start_drill again to retry
     return { verdict: j.verdict, san: j.san, bestMove: sanOf(ex.fen, ex.best), yourGameMove: sanOf(ex.fen, ex.played) };
   }
 
@@ -107,7 +108,8 @@ export async function handleFunctionCall(
   if (!pattern) return { error: `no pattern "${tag}"`, available: report.patterns.map((p) => p.tag) };
 
   if (name === "show_mistake") {
-    const index = Number(args.index ?? 0);
+    const raw = args.index;
+    const index = typeof raw === "number" ? raw : typeof raw === "string" && /^\d+$/.test(raw.trim()) ? Number(raw) : NaN;
     const ex = pattern.examples[index];
     if (!Number.isInteger(index) || !ex) return { error: "index out of range", examples: pattern.examples.length };
     fx.showPosition(ex.fen, { played: ex.played, best: ex.best });
