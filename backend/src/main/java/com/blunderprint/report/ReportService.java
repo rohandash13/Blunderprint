@@ -67,7 +67,9 @@ public class ReportService {
             patterns.add(new PatternSummary(e.getKey(), (int) e.getValue()[0], e.getValue()[1] / e.getValue()[0],
                 byTag.get(e.getKey())));
         }
-        patterns.sort(Comparator.comparingInt(PatternSummary::count).reversed());
+        patterns.sort(Comparator.comparingInt(PatternSummary::count).reversed()
+            .thenComparing(Comparator.comparingDouble(PatternSummary::avgCpl).reversed())
+            .thenComparing(PatternSummary::tag));
         return Optional.of(new Report(username, run, ((Number) counts.get("moves")).intValue(),
             ((Number) counts.get("mistakes")).intValue(), ((Number) counts.get("candidates")).intValue(), patterns));
     }
