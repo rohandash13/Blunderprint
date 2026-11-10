@@ -5,6 +5,8 @@ spring:
     password: ${DB_PASSWORD:chess}
   flyway:
     enabled: true
+  config:
+    import: "optional:file:.env[.properties],optional:file:../.env[.properties]"
 engine:
   path: ${STOCKFISH_PATH:stockfish}
   version: ${ENGINE_VERSION:stockfish-local}
@@ -23,3 +25,6 @@ model:
 report:
   mistake-cpl: 100
   min-p-played: 0.15
+deepgram:
+  api-key: ${DEEPGRAM_API_KEY:}
+  base-url: https://api.deepgram.com
