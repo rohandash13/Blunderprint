@@ -1,0 +1,227 @@
+import { useRef, useState, type CSSProperties } from "react";
+import { Chessboard } from "react-chessboard";
+import { handleFunctionCall, newCoachState, type CoachEffects } from "./coach/functions";
+import { sanOf } from "./chess/verdict";
+import { DEFAULT_CONFIG, buildSettings } from "./voice/settings";
+import { AgentSocket, type AgentEvent } from "./voice/agentSocket";
+import { Mic, Player } from "./voice/audio";
+import { LatencyRecorder } from "./latency/recorder";
+import type { Report } from "./types";
+
+const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+type Status = "idle" | "connecting" | "live" | "error";
+type Line = { role: string; content: string };
+
+async function fetchReport(username: string): Promise<Report | null> {
+  const res = await fetch(`/players/${encodeURIComponent(username)}/report`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`report request failed (${res.status})`);
+  return (await res.json()) as Report;
+}
+
+export default function App() {
+  const [username, setUsername] = useState("");
+  const [report, setReport] = useState<Report | null>(null);
+  const [fen, setFen] = useState(START);
+  const [highlight, setHighlight] = useState<{ played?: string; best?: string }>({});
+  const [lines, setLines] = useState<Line[]>([]);
+  const [status, setStatus] = useState<Status>("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [typed, setTyped] = useState("");
+  const [verdict, setVerdict] = useState<string | null>(null);
+
+  const coach = useRef(newCoachState());
+  const socket = useRef<AgentSocket | null>(null);
+  const mic = useRef<Mic | null>(null);
+  const player = useRef<Player | null>(null);
+  const recorder = useRef<LatencyRecorder | null>(null);
+  const cancelled = useRef(new Set<string>());
+
+  const effects: CoachEffects = {
+    fetchReport: async () => {
+      const r = await fetchReport(username);
+      setReport(r);
+      return r;
+    },
+    showPosition: (f, h) => {
+      setFen(f);
+      setHighlight(h ?? {});
+      setVerdict(null);
+    },
+    playOnBoard: (uci) => {
+      const d = coach.current.drill;
+      if (!d) return;
+      setHighlight({ played: uci });
+      setVerdict(`You played ${sanOf(d.example.fen, uci)}`);
+    },
+  };
+
+  async function onEvent(e: AgentEvent) {
+    recorder.current?.record(e);
+    switch (e.type) {
+      case "ConversationText":
+        setLines((l) => [...l, { role: String(e.role), content: String(e.content) }]);
+        break;
+      case "UserStartedSpeaking":
+        player.current?.stop();
+        break;
+      case "FunctionCallCancelled":
+        for (const f of (e.functions as { id: string }[]) ?? []) cancelled.current.add(f.id);
+        break;
+      case "FunctionCallRequest":
+        for (const f of (e.functions as { id: string; name: string; arguments: string; client_side: boolean }[]) ?? []) {
+          if (!f.client_side) continue;
+          recorder.current?.functionCall(f.name);
+          let result: unknown;
+          try {
+            result = await handleFunctionCall(f.name, JSON.parse(f.arguments || "{}"), coach.current, effects);
+          } catch (err) {
+            result = { error: err instanceof Error ? err.message : String(err) };
+          }
+          if (!cancelled.current.has(f.id)) socket.current?.respond(f.id, f.name, JSON.stringify(result));
+        }
+        break;
+      case "Error":
+        setError(String(e.description ?? "Deepgram error"));
+        setStatus("error");
+        break;
+    }
+  }
+
+  async function startVoice() {
+    setError(null);
+    setStatus("connecting");
+    try {
+      const res = await fetch("/voice/token");
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `token request failed (${res.status})`);
+      player.current = player.current ?? new Player();
+      await player.current.resume();
+      recorder.current = new LatencyRecorder(DEFAULT_CONFIG.thinkModel);
+      const s = new AgentSocket(buildSettings(DEFAULT_CONFIG, username), {
+        onEvent: (e) => void onEvent(e),
+        onAudio: (c) => player.current?.play(c),
+        onClose: (reason) => {
+          mic.current?.stop();
+          setStatus((st) => (st === "live" ? "error" : st));
+          setError((er) => er ?? `Voice disconnected: ${reason}`);
+        },
+      });
+      socket.current = s;
+      await s.connect(body.token);
+      mic.current = new Mic();
+      await mic.current.start((pcm) => s.sendAudio(pcm));
+      setStatus("live");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("error");
+      stopVoice();
+    }
+  }
+
+  function stopVoice() {
+    mic.current?.stop();
+    socket.current?.close();
+    player.current?.stop();
+    socket.current = null;
+    setStatus((st) => (st === "error" ? st : "idle"));
+  }
+
+  function exportSession() {
+    const data = recorder.current?.export();
+    if (!data) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `voice-session-${data.model}-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function submitTyped() {
+    const move = typed.trim();
+    if (!move) return;
+    setTyped("");
+    if (status === "live") {
+      socket.current?.injectUserMessage(`I play ${move}`);
+      return;
+    }
+    const r = (await handleFunctionCall("play_move", { move }, coach.current, effects)) as Record<string, unknown>;
+    setVerdict(r.error ? String(r.error) : r.verdict === "illegal" ? String(r.reason) : `${r.san}: ${r.verdict} (best was ${r.bestMove})`);
+  }
+
+  async function loadReport() {
+    setError(null);
+    try {
+      coach.current = newCoachState();
+      const r = await fetchReport(username);
+      coach.current.report = r;
+      setReport(r);
+      if (!r) setError(`No finished analysis for ${username} yet.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  const squareStyles: Record<string, CSSProperties> = {};
+  if (highlight.played) {
+    squareStyles[highlight.played.slice(0, 2)] = { background: "rgba(220, 60, 60, 0.45)" };
+    squareStyles[highlight.played.slice(2, 4)] = { background: "rgba(220, 60, 60, 0.45)" };
+  }
+  if (highlight.best) {
+    squareStyles[highlight.best.slice(0, 2)] = { background: "rgba(60, 170, 90, 0.45)" };
+    squareStyles[highlight.best.slice(2, 4)] = { background: "rgba(60, 170, 90, 0.45)" };
+  }
+
+  return (
+    <main className="app">
+      <header>
+        <h1>Blunderprint Coach</h1>
+        <div className="row">
+          <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Lichess username" aria-label="Lichess username" />
+          <button onClick={loadReport} disabled={!username}>Load report</button>
+          {status === "live" ? (
+            <button onClick={stopVoice} className="live">Stop voice</button>
+          ) : (
+            <button onClick={startVoice} disabled={!username || status === "connecting"}>
+              {status === "connecting" ? "Connecting…" : status === "error" ? "Reconnect voice" : "Start voice"}
+            </button>
+          )}
+          <button onClick={exportSession} disabled={!recorder.current}>Export latency</button>
+        </div>
+        {error && <p className="error" role="alert">{error}</p>}
+      </header>
+
+      <section className="layout">
+        <div className="board">
+          <Chessboard id="bp" position={fen} boardWidth={440} arePiecesDraggable={false} customSquareStyles={squareStyles} />
+          <div className="row">
+            <input value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitTyped()} placeholder="Type a move (e.g. Nf3)" aria-label="Type a move" />
+            <button onClick={submitTyped}>Play</button>
+          </div>
+          {verdict && <p className="verdict">{verdict}</p>}
+        </div>
+
+        <div className="side">
+          {report && (
+            <div className="patterns">
+              <h2>{report.username}: {report.mistakes} mistakes in {report.movesAnalyzed} moves</h2>
+              {report.patterns.map((p) => (
+                <div key={p.tag} className="pattern">
+                  <strong>{p.tag.replace(/_/g, " ")}</strong> × {p.count} (avg {Math.round(p.avgCpl)} cp)
+                  <button onClick={() => handleFunctionCall("show_mistake", { tag: p.tag, index: 0 }, coach.current, effects)}>Show</button>
+                  <button onClick={() => handleFunctionCall("start_drill", { tag: p.tag }, coach.current, effects)}>Drill</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="transcript" aria-live="polite">
+            {lines.map((l, i) => (
+              <p key={i} className={l.role}><b>{l.role === "user" ? "You" : "Coach"}:</b> {l.content}</p>
+            ))}
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
