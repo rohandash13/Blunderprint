@@ -6,6 +6,7 @@ export interface Example {
   best: string; // UCI
   cpl: number;
   pPlayed: number;
+  pv: string[]; // engine best line (UCI) from the position before the mistake
 }
 
 export interface Pattern {

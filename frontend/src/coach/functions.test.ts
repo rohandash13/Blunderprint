@@ -17,8 +17,8 @@ const REPORT: Report = {
       count: 5,
       avgCpl: 412.6,
       examples: [
-        { gameId: "g1", ply: 0, fen: START, played: "g1h3", best: "e2e4", cpl: 300, pPlayed: 0.214 },
-        { gameId: "g2", ply: 1, fen: AFTER_E4, played: "g8h6", best: "e7e5", cpl: 250, pPlayed: 0.18 },
+        { gameId: "g1", ply: 0, fen: START, played: "g1h3", best: "e2e4", cpl: 300, pPlayed: 0.214, pv: [] },
+        { gameId: "g2", ply: 1, fen: AFTER_E4, played: "g8h6", best: "e7e5", cpl: 250, pPlayed: 0.18, pv: [] },
       ],
     },
   ],
