@@ -8,7 +8,8 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class ReportService {
-    public record Example(String gameId, int ply, String fen, String played, String best, int cpl, double pPlayed) {}
+    public record Example(String gameId, int ply, String fen, String played, String best, int cpl, double pPlayed,
+                           List<String> pv) {}
     public record PatternSummary(String tag, int count, double avgCpl, List<Example> examples) {}
     public record Report(String username, UUID runId, int movesAnalyzed, int mistakes, int candidates,
                          List<PatternSummary> patterns) {}
@@ -32,6 +33,11 @@ public class ReportService {
         return ids.stream().findFirst();
     }
 
+    private static List<String> splitPv(String pv) {
+        if (pv == null || pv.isBlank()) return List.of();
+        return List.of(pv.trim().split("\\s+"));
+    }
+
     public Optional<Report> report(String username) {
         Optional<UUID> maybe = latestDoneRun(username);
         if (maybe.isEmpty()) return Optional.empty();
@@ -46,8 +52,12 @@ public class ReportService {
         Map<String, List<Example>> byTag = new LinkedHashMap<>();
         Map<String, double[]> stats = new HashMap<>();     // tag -> [count, sumCpl]
         jdbc.query("""
-            select tag, m.game_id, m.ply, m.before_fen, m.played_uci, a.best_uci, a.cpl, a.p_played
-            from move m join move_analysis a on a.move_id = m.id, unnest(a.tags) as tag
+            select tag, m.game_id, m.ply, m.before_fen, m.played_uci, a.best_uci, a.cpl, a.p_played, c.pv
+            from move m join move_analysis a on a.move_id = m.id
+            join analysis_run r on r.id = m.run_id
+            left join eval_cache c on c.fen_key = m.before_key and c.engine = r.engine
+                                  and c.depth = r.depth and c.multipv = 1,
+                 unnest(a.tags) as tag
             where m.run_id = ? and a.cpl >= ? and a.p_played >= ?
             order by a.cpl desc
             """, rs -> {
@@ -58,7 +68,8 @@ public class ReportService {
                 List<Example> ex = byTag.computeIfAbsent(tag, t -> new ArrayList<>());
                 if (ex.size() < 3) {
                     ex.add(new Example(rs.getString("game_id"), rs.getInt("ply"), rs.getString("before_fen"),
-                        rs.getString("played_uci"), rs.getString("best_uci"), rs.getInt("cpl"), rs.getDouble("p_played")));
+                        rs.getString("played_uci"), rs.getString("best_uci"), rs.getInt("cpl"), rs.getDouble("p_played"),
+                        splitPv(rs.getString("pv"))));
                 }
             }, run, mistakeCpl, minP);
 

@@ -67,4 +67,25 @@ class ReportServiceIT extends PostgresIT {
         assertEquals(2, rows.size());
         assertEquals(java.util.List.of("hanging_piece"), rows.get(1).tags());
     }
+
+    @Test
+    void examplesCarryEngineLineFromCache() {
+        UUID run = UUID.randomUUID();
+        seed(run, "DONE");
+        move(run, 2, 300, 0.4, "{hanging_piece}");
+        jdbc.update("insert into eval_cache(fen_key, engine, depth, multipv, best_uci, score_cp, pv) values ('k', 'sf', 10, 1, 'e5f7', 50, 'e5f7 e8f7 d1h5')");
+        // same key but other depth must not be picked up
+        jdbc.update("insert into eval_cache(fen_key, engine, depth, multipv, best_uci, score_cp, pv) values ('k', 'sf', 20, 1, 'a2a3', 0, 'a2a3')");
+        var ex = reports.report("alice").orElseThrow().patterns().get(0).examples().get(0);
+        assertEquals(java.util.List.of("e5f7", "e8f7", "d1h5"), ex.pv());
+    }
+
+    @Test
+    void exampleWithoutCacheRowHasEmptyPv() {
+        UUID run = UUID.randomUUID();
+        seed(run, "DONE");
+        move(run, 2, 300, 0.4, "{hanging_piece}");
+        var ex = reports.report("alice").orElseThrow().patterns().get(0).examples().get(0);
+        assertTrue(ex.pv().isEmpty());
+    }
 }
