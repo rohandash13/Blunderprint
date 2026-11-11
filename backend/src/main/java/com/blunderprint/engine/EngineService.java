@@ -58,11 +58,11 @@ public class EngineService {
 
     private static List<String> splitPv(String pv) {
         if (pv == null || pv.isBlank()) return List.of();
-        return List.of(pv.trim().split("\s+"));
+        return List.of(pv.trim().split("\\s+"));
     }
 
     static boolean validFen(String fen) {
-        if (fen == null || fen.trim().split("\s+").length != 6) return false;
+        if (fen == null || fen.trim().split("\\s+").length != 6) return false;
         try {
             new Board().loadFromFen(fen.trim());
             return true;
