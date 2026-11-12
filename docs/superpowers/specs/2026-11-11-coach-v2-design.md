@@ -71,7 +71,8 @@ check thresholds (if a level holds <5% of mistakes, revisit cutoffs in config).
 **API.** `GET /players/{u}/report?levels=tricky,deep` (default `tricky,deep`; accepts any subset of
 `slip,tricky,deep,unrated`; unknown value → 400).
 - Pattern counts, averages and examples are computed over the selected levels only.
-- `Report` gains `levelCounts: {slip, tricky, deep, unrated}` (over all mistakes, unfiltered) and `levels`
+- `Report` gains `levelCounts: {slip, tricky, deep, unrated}` (over all candidate mistakes — the same
+  `cpl`/`p_played` base the patterns use — ignoring the level filter) and `levels`
   (the applied filter).
 - `Example` gains `pBest` (nullable) and `level`.
 - Within a pattern, examples sort by `cpl * (1 - p_best)` descending (costly *and* hard first), ties broken
@@ -136,8 +137,9 @@ with `role === "user"`:
 - Trim; return null (don't render) for empty or punctuation-only text.
 - **Command correction:** if the utterance has ≤ 4 words, compare (lowercased, punctuation stripped) against
   `COMMANDS = ["drill me", "show me", "give me a hint", "i don't know", "next one", "go back", "reset",
-  "why", "show me the answer"]` with Levenshtein distance; if the best match has distance ≤ 2 and ≤ 35% of
-  its length, display the command text. "drove me" → "drill me" (distance 2/8).
+  "show me the answer"]` with Levenshtein distance, considering only commands with the same first letter;
+  if the best match has distance ≤ 3 and ≤ 40% of its length, display the command text. "drove me" →
+  "drill me" (distance 3/8); "tell me" is left alone (different first letter).
 - **Move rendering:** if `parseMove(currentFen, text)` yields a unique legal move, display its SAN
   (`king d five` → `Kd5`).
 - Otherwise display the original text unchanged.
