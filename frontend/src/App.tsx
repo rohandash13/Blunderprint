@@ -42,10 +42,15 @@ export default function App() {
   const cancelled = useRef(new Set<string>());
   const queue = useRef(new AnimationQueue());
 
-  const afterMove = (f: string, uci: string) => {
-    const c = new Chess(f);
-    c.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
-    return c.fen();
+  // Returns null for an illegal move so animations stop instead of throwing mid-line.
+  const afterMove = (f: string, uci: string): string | null => {
+    try {
+      const c = new Chess(f);
+      c.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
+      return c.fen();
+    } catch {
+      return null;
+    }
   };
   const arrowOf = (uci: string, color: string): Arrow => [uci.slice(0, 2), uci.slice(2, 4), color];
 
@@ -72,7 +77,9 @@ export default function App() {
           setArrows([arrowOf(u, color)]);
           await ctx.sleep(450);
           if (ctx.cancelled()) return;
-          cur = afterMove(cur, u);
+          const next = afterMove(cur, u);
+          if (!next) return;
+          cur = next;
           setFen(cur);
           await ctx.sleep(450);
           if (ctx.cancelled()) return;
@@ -87,16 +94,21 @@ export default function App() {
         if (ctx.cancelled()) return;
         setFlash([]);
         setArrows([]);
-        setFen(afterMove(f, uci));
+        setFen(afterMove(f, uci) ?? f);
       }),
+    // Any failure (backend down, network error, bad body) means "no engine answer".
     analyze: async (f) => {
-      const res = await fetch("/engine/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fen: f }),
-      });
-      if (!res.ok) return null;
-      return (await res.json()) as { bestUci: string; scoreCp: number; pv: string[] };
+      try {
+        const res = await fetch("/engine/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fen: f }),
+        });
+        if (!res.ok) return null;
+        return (await res.json()) as { bestUci: string; scoreCp: number; pv: string[] };
+      } catch {
+        return null;
+      }
     },
   };
 
@@ -186,6 +198,8 @@ export default function App() {
     const s = socket.current;
     socket.current = null;
     queue.current.cancel();
+    setFlash([]);
+    setArrows([]);
     mic.current?.stop();
     s?.close();
     player.current?.stop();
