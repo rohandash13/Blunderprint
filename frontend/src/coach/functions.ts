@@ -278,7 +278,7 @@ export async function handleFunctionCall(
       cpl: ex.cpl,
       pPlayed: Math.round(ex.pPlayed * 100) / 100,
       level: ex.level,
-      findRatePercent: ex.pBest == null ? null : Math.round(ex.pBest * 100),
+      harderThanPercent: ex.harderThanPercent ?? null,
     };
   }
 
@@ -294,7 +294,7 @@ export async function handleFunctionCall(
     side: side(ex.fen),
     moveNumber: moveNumber(ex.fen),
     level: ex.level,
-    findRatePercent: ex.pBest == null ? null : Math.round(ex.pBest * 100),
+    harderThanPercent: ex.harderThanPercent ?? null,
   };
 }
 

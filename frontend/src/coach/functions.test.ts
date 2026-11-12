@@ -22,8 +22,8 @@ const REPORT: Report = {
       count: 5,
       avgCpl: 412.6,
       examples: [
-        { gameId: "g1", ply: 0, fen: START, played: "g1h3", best: "e2e4", cpl: 300, pPlayed: 0.214, pv: ["e2e4", "e7e5", "g1f3"], pBest: 0.3, level: "tricky" },
-        { gameId: "g2", ply: 1, fen: AFTER_E4, played: "g8h6", best: "e7e5", cpl: 250, pPlayed: 0.18, pv: [], pBest: 0.05, level: "deep" },
+        { gameId: "g1", ply: 0, fen: START, played: "g1h3", best: "e2e4", cpl: 300, pPlayed: 0.214, pv: ["e2e4", "e7e5", "g1f3"], pBest: 0.3, level: "tricky", harderThanPercent: 40 },
+        { gameId: "g2", ply: 1, fen: AFTER_E4, played: "g8h6", best: "e7e5", cpl: 250, pPlayed: 0.18, pv: [], pBest: 0.05, level: "deep", harderThanPercent: 90 },
       ],
     },
     { tag: "other", count: 2, avgCpl: 100, examples: [] },
@@ -99,7 +99,7 @@ describe("report and show_mistake", () => {
     const r = await call("show_mistake", { tag: "hanging_piece", index: 1 }, newCoachState(), e.fx);
     expect(e.shown).toEqual([{ fen: AFTER_E4, arrows: [["g8", "h6", PLAYED], ["e7", "e5", BEST]] }]);
     expect(r).toEqual({
-      moveNumber: 1, side: "Black", playedSpoken: "knight to h6", bestSpoken: "pawn to e5", cpl: 250, pPlayed: 0.18, level: "deep", findRatePercent: 5,
+      moveNumber: 1, side: "Black", playedSpoken: "knight to h6", bestSpoken: "pawn to e5", cpl: 250, pPlayed: 0.18, level: "deep", harderThanPercent: 90,
     });
   });
 
@@ -120,7 +120,7 @@ describe("start_drill and play_move", () => {
     const s = newCoachState();
     const e = effects();
     const ready = await call("start_drill", { tag: "hanging_piece" }, s, e.fx);
-    expect(ready).toEqual({ status: "Position ready, White to move", side: "White", moveNumber: 1, level: "tricky", findRatePercent: 30 });
+    expect(ready).toEqual({ status: "Position ready, White to move", side: "White", moveNumber: 1, level: "tricky", harderThanPercent: 40 });
     expect(JSON.stringify(ready)).not.toContain("e4");
     expect(e.shown).toEqual([{ fen: START, arrows: undefined }]);
     expect(s.drill).toMatchObject({ tag: "hanging_piece", attempts: 0, hintsGiven: 0, solved: false, revealed: false, exploreFen: START });
@@ -176,7 +176,7 @@ describe("start_drill and play_move", () => {
     await call("start_drill", { tag: "hanging_piece" }, s, e.fx);
     await call("play_move", { move: "e4" }, s, e.fx);
     const next = await call("start_drill", { tag: "hanging_piece" }, s, e.fx);
-    expect(next).toEqual({ status: "Position ready, Black to move", side: "Black", moveNumber: 1, level: "deep", findRatePercent: 5 });
+    expect(next).toEqual({ status: "Position ready, Black to move", side: "Black", moveNumber: 1, level: "deep", harderThanPercent: 90 });
   });
 });
 
@@ -387,7 +387,7 @@ describe("playout", () => {
 });
 
 describe("levels", () => {
-  it("get_report passes the active levels and returns counts; examples expose level and find rate", async () => {
+  it("get_report passes the active levels and returns counts; examples expose level and harderThanPercent", async () => {
     const s = newCoachState();
     const { fx, of } = effects();
     const r = await call("get_report", {}, s, fx);
@@ -396,7 +396,7 @@ describe("levels", () => {
     expect(r.levelCounts.deep).toBe(2);
     const shown = await call("show_mistake", { tag: "hanging_piece", index: 1 }, s, fx);
     expect(shown.level).toBe("deep");
-    expect(shown.findRatePercent).toBe(5);
+    expect(shown.harderThanPercent).toBe(90);
   });
 
   it("set_levels validates, updates the chips and refetches", async () => {

@@ -36,7 +36,7 @@ class ReportServiceIT extends PostgresIT {
         move(run, 2, 300, 0.40, "{hanging_piece,time_trouble}");       // candidate
         move(run, 4, 150, 0.20, "{hanging_piece}");                    // candidate
         move(run, 6, 500, 0.01, "{missed_tactic}");                    // mistake but unlikely human move => not a candidate
-        var r = reports.report("alice").orElseThrow();
+        var r = reports.report("alice", Difficulty.ALL).orElseThrow();
         assertEquals(4, r.movesAnalyzed());
         assertEquals(3, r.mistakes());
         assertEquals(2, r.candidates());
@@ -81,7 +81,7 @@ class ReportServiceIT extends PostgresIT {
         jdbc.update("insert into eval_cache(fen_key, engine, depth, multipv, best_uci, score_cp, pv) values ('k', 'sf', 10, 1, 'e5f7', 50, 'e5f7 e8f7 d1h5')");
         // same key but other depth must not be picked up
         jdbc.update("insert into eval_cache(fen_key, engine, depth, multipv, best_uci, score_cp, pv) values ('k', 'sf', 20, 1, 'a2a3', 0, 'a2a3')");
-        var ex = reports.report("alice").orElseThrow().patterns().get(0).examples().get(0);
+        var ex = reports.report("alice", Difficulty.ALL).orElseThrow().patterns().get(0).examples().get(0);
         assertEquals(java.util.List.of("e5f7", "e8f7", "d1h5"), ex.pv());
     }
 
@@ -90,7 +90,7 @@ class ReportServiceIT extends PostgresIT {
         UUID run = UUID.randomUUID();
         seed(run, "DONE");
         move(run, 2, 300, 0.4, "{hanging_piece}");
-        var ex = reports.report("alice").orElseThrow().patterns().get(0).examples().get(0);
+        var ex = reports.report("alice", Difficulty.ALL).orElseThrow().patterns().get(0).examples().get(0);
         assertTrue(ex.pv().isEmpty());
     }
 
@@ -108,6 +108,7 @@ class ReportServiceIT extends PostgresIT {
         var hanging = r.patterns().stream().filter(p -> p.tag().equals("hanging_piece")).findFirst().orElseThrow();
         assertEquals(1, hanging.count());
         assertEquals("tricky", hanging.examples().get(0).level());
+        assertEquals(33, hanging.examples().get(0).harderThanPercent());   // 1 of 3 candidates has higher p_best
         assertEquals(0.3, hanging.examples().get(0).pBest(), 1e-9);
         var all = reports.report("alice", List.of("slip", "tricky", "deep", "unrated")).orElseThrow();
         assertEquals(2, all.patterns().stream().filter(p -> p.tag().equals("hanging_piece")).findFirst().orElseThrow().count());
@@ -119,7 +120,7 @@ class ReportServiceIT extends PostgresIT {
         seed(run, "DONE");
         move(run, 2, 400, 0.4, "{missed_tactic}", 0.45);   // 400 * 0.55 = 220
         move(run, 4, 300, 0.4, "{missed_tactic}", 0.02);   // 300 * 0.98 = 294
-        var ex = reports.report("alice").orElseThrow().patterns().get(0).examples();
+        var ex = reports.report("alice", Difficulty.ALL).orElseThrow().patterns().get(0).examples();
         assertEquals(300, ex.get(0).cpl());
         assertEquals(400, ex.get(1).cpl());
     }
@@ -129,8 +130,11 @@ class ReportServiceIT extends PostgresIT {
         UUID run = UUID.randomUUID();
         seed(run, "DONE");
         move(run, 2, 300, 0.4, "{hanging_piece}", 0.05);
+        move(run, 4, 300, 0.4, "{hanging_piece}", 0.3);
+        move(run, 6, 300, 0.4, "{hanging_piece}", 0.9);
         var row = reports.mistakes("alice").get(0);
         assertEquals("deep", row.level());
         assertEquals(0.05, row.pBest(), 1e-9);
+        assertEquals(67, row.harderThanPercent());
     }
 }

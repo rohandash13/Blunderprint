@@ -38,13 +38,24 @@ Live test with `Knight_ofthelight73` (Lichess blitz ~2500, rapid ~2480) showed t
 engine's best move in the position (same masked softmax already used for `p_played`). Low `p_best` means
 few players at that rating find the move.
 
-**Levels** (config, `report.levels`):
+**Levels** (relative to the player). Let `C` be the non-null `p_best` values of the run's candidate mistakes
+(`cpl >= report.mistake-cpl` and `p_played >= report.min-p-played`), sorted ascending, `n = |C|`. Cutoffs are
+the tertiles of `C`: `deepMax = C[floor(n/3)]`, `slipMin = C[floor(2n/3)]` (for `n < 3`, both equal `C[0]`;
+for `n = 0` every level is `unrated`).
 
-| Level  | Rule                    | Meaning                                   |
-|--------|-------------------------|-------------------------------------------|
-| slip   | `p_best >= 0.50`        | Easy to find; missed (time, carelessness) |
-| tricky | `0.15 <= p_best < 0.50` | Needs some calculation                    |
-| deep   | `p_best < 0.15`         | Most players at this rating miss it       |
+| Level  | Rule                         | Meaning                                       |
+|--------|------------------------------|-----------------------------------------------|
+| slip   | `p_best >= slipMin`          | Among this player's easier mistakes           |
+| tricky | `deepMax <= p_best < slipMin`| Middle third                                  |
+| deep   | `p_best < deepMax`           | Among this player's hardest mistakes          |
+
+Why relative: candidates are pre-selected for high `p_played`, which squeezes `p_best` toward 0, and the MLP
+cannot calculate, so tactical best moves get tiny probabilities. On real data (a 2500-rated player, 71
+candidates) fixed cutoffs put 80% of mistakes in "deep". The *ranking* by `p_best` is informative; the
+absolute value is not, so no level claims a population find rate.
+
+Each example also carries `harderThanPercent = round(100 * #{c in C : c > p_best} / n)` (null when `p_best`
+is null or `n = 0`).
 
 Rows with `p_best` null (best move unknown) have level `unrated`.
 
@@ -59,12 +70,12 @@ for an arbitrary move per board; `p_played_batch` becomes a thin wrapper).
 - **Backfill:** `POST /admin/backfill-p-best?username=` rescores moves in the user's latest DONE run where
   `p_best is null and best_uci is not null`, in batches through the existing `ModelClient`. Returns
   `{updated}`. Idempotent.
-- `Difficulty` value class maps `p_best` → level using config thresholds (single source of truth for the
+- `Difficulty` value class maps `p_best` → level using per-run tertile cutoffs (single source of truth for the
   backend; the frontend receives the level string, never recomputes it).
 
 **Reproducibility.** `scripts/difficulty_report.py --username U` reads Postgres and writes
 `results/difficulty_levels.json`: per-level count, share, average CPL, and per-tag breakdown. Used to sanity-
-check thresholds (if a level holds <5% of mistakes, revisit cutoffs in config).
+check levels (each should hold roughly a third of candidate mistakes).
 
 ## 2. Challenge level
 
@@ -74,18 +85,18 @@ check thresholds (if a level holds <5% of mistakes, revisit cutoffs in config).
 - `Report` gains `levelCounts: {slip, tricky, deep, unrated}` (over all candidate mistakes — the same
   `cpl`/`p_played` base the patterns use — ignoring the level filter) and `levels`
   (the applied filter).
-- `Example` gains `pBest` (nullable) and `level`.
+- `Example` gains `pBest` (nullable), `level` and `harderThanPercent` (nullable).
 - Within a pattern, examples sort by `cpl * (1 - p_best)` descending (costly *and* hard first), ties broken
   deterministically as today. Null `p_best` treated as 0.5 for sorting.
 
 **UI.** Toggle chips **Slips · Tricky · Deep** above the report table, each showing its count; default
 Tricky + Deep on. Changing chips refetches the report and resets drill state. Table gains a **Difficulty**
-column (level of the pattern's first example plus "N% find it" from `pBest`). Selecting zero chips is not
+column (level of the pattern's first example plus "harder than N% of your mistakes" from `harderThanPercent`). Selecting zero chips is not
 allowed (last chip can't be turned off).
 
 **Coach.** `CoachState` holds `levels`; `fetchReport` passes them. `get_report` result includes `levels`
-and `levelCounts`; `show_mistake`/`start_drill` results include `level` and `findRate` (rounded `pBest`).
-Prompt additions: name the active level when summarizing ("among moves most players at your rating miss");
+and `levelCounts`; `show_mistake`/`start_drill` results include `level` and `harderThanPercent`.
+Prompt additions: name the active level when summarizing ("among your hardest mistakes");
 if the player asks for easier/harder positions, call new function `set_levels({levels: string[]})`, which
 updates state and the chips, refetches, and returns the new counts.
 

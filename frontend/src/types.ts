@@ -9,8 +9,9 @@ export interface Example {
   cpl: number;
   pPlayed: number;
   pv: string[]; // engine best line (UCI) from the position before the mistake
-  pBest: number | null; // chance a player at this rating finds the best move
+  pBest: number | null; // model chance of finding the best move (only meaningful as a ranking)
   level: Level;
+  harderThanPercent: number | null; // share of this player's candidate mistakes that are easier
 }
 
 export interface Pattern {

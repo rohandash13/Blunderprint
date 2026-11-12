@@ -25,9 +25,6 @@ model:
 report:
   mistake-cpl: 100
   min-p-played: 0.15
-  levels:
-    slip-min: 0.50
-    deep-max: 0.15
 deepgram:
   api-key: ${DEEPGRAM_API_KEY:}
   base-url: https://api.deepgram.com

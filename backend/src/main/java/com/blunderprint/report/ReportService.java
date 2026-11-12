@@ -9,22 +9,20 @@ import org.springframework.stereotype.Service;
 @Service
 public class ReportService {
     public record Example(String gameId, int ply, String fen, String played, String best, int cpl, double pPlayed,
-                           List<String> pv, Double pBest, String level) {}
+                           List<String> pv, Double pBest, String level, Integer harderThanPercent) {}
     public record PatternSummary(String tag, int count, double avgCpl, List<Example> examples) {}
     public record Report(String username, UUID runId, int movesAnalyzed, int mistakes, int candidates,
                          List<PatternSummary> patterns, List<String> levels, Map<String, Integer> levelCounts) {}
     public record MistakeRow(String gameId, long playedAtEpochSec, int ply, int cpl, Double pPlayed, List<String> tags,
-                             Double pBest, String level) {}
+                             Double pBest, String level, Integer harderThanPercent) {}
 
     private final JdbcTemplate jdbc;
     private final int mistakeCpl;
     private final double minP;
-    private final Difficulty difficulty;
 
     public ReportService(JdbcTemplate jdbc, @Value("${report.mistake-cpl}") int mistakeCpl,
-                         @Value("${report.min-p-played}") double minP, Difficulty difficulty) {
+                         @Value("${report.min-p-played}") double minP) {
         this.jdbc = jdbc;
-        this.difficulty = difficulty;
         this.mistakeCpl = mistakeCpl;
         this.minP = minP;
     }
@@ -34,6 +32,14 @@ public class ReportService {
             select id from analysis_run where lower(username) = lower(?) and status = 'DONE'
             order by created_at desc limit 1""", UUID.class, username);
         return ids.stream().findFirst();
+    }
+
+    private Difficulty difficultyFor(UUID run) {
+        List<Double> pBest = jdbc.queryForList("""
+            select a.p_best from move m join move_analysis a on a.move_id = m.id
+            where m.run_id = ? and a.cpl >= ? and a.p_played >= ? and a.p_best is not null""",
+            Double.class, run, mistakeCpl, minP);
+        return Difficulty.relative(pBest);
     }
 
     private static List<String> splitPv(String pv) {
@@ -49,6 +55,7 @@ public class ReportService {
         Optional<UUID> maybe = latestDoneRun(username);
         if (maybe.isEmpty()) return Optional.empty();
         UUID run = maybe.get();
+        Difficulty difficulty = difficultyFor(run);
         var counts = jdbc.queryForMap("""
             select count(*) moves,
                    count(*) filter (where a.cpl >= ?) mistakes,
@@ -90,7 +97,8 @@ public class ReportService {
                 if (ex.size() < 3) {
                     ex.add(new Example(rs.getString("game_id"), rs.getInt("ply"), rs.getString("before_fen"),
                         rs.getString("played_uci"), rs.getString("best_uci"), rs.getInt("cpl"), rs.getDouble("p_played"),
-                        splitPv(rs.getString("pv")), (Double) rs.getObject("p_best"), rs.getString("level")));
+                        splitPv(rs.getString("pv")), (Double) rs.getObject("p_best"), rs.getString("level"),
+                        difficulty.harderThanPercent((Double) rs.getObject("p_best"))));
                 }
             }, params.toArray());
 
@@ -108,7 +116,11 @@ public class ReportService {
     }
 
     public List<MistakeRow> mistakes(String username) {
-        return latestDoneRun(username).map(run -> jdbc.query("""
+        return latestDoneRun(username).map(run -> mistakes(run, difficultyFor(run))).orElse(List.of());
+    }
+
+    private List<MistakeRow> mistakes(UUID run, Difficulty difficulty) {
+        return jdbc.query("""
             select m.game_id, extract(epoch from g.played_at)::bigint as t, m.ply, a.cpl, a.p_played, a.tags, a.p_best
             from move m join move_analysis a on a.move_id = m.id join game g on g.id = m.game_id
             where m.run_id = ? order by g.played_at, m.ply
@@ -117,7 +129,8 @@ public class ReportService {
                 List<String> tags = arr == null ? List.of() : Arrays.asList((String[]) arr.getArray());
                 Double pBest = (Double) rs.getObject("p_best");
                 return new MistakeRow(rs.getString("game_id"), rs.getLong("t"), rs.getInt("ply"), rs.getInt("cpl"),
-                    (Double) rs.getObject("p_played"), tags, pBest, difficulty.level(pBest));
-            }, run)).orElse(List.of());
+                    (Double) rs.getObject("p_played"), tags, pBest, difficulty.level(pBest),
+                    difficulty.harderThanPercent(pBest));
+            }, run);
     }
 }
