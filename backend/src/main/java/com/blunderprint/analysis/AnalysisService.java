@@ -78,7 +78,7 @@ public class AnalysisService {
         }
     }
 
-    private void score(UUID run) {
+    private int score(UUID run) {
         List<Scored> rows = jdbc.query("""
             select m.id, m.before_fen, m.rating, m.played_uci, m.clock_cs, eb.best_uci,
                    eb.score_cp as best_score, ea.score_cp as after_score
@@ -104,13 +104,24 @@ public class AnalysisService {
             }
             for (MoveOut o : model.analyze(batch)) {
                 jdbc.update(con -> {
-                    var ps = con.prepareStatement("update move_analysis set p_played = ?, tags = ? where move_id = ?");
+                    var ps = con.prepareStatement("update move_analysis set p_played = ?, tags = ?, p_best = ? where move_id = ?");
                     ps.setDouble(1, o.pPlayed());
                     ps.setArray(2, con.createArrayOf("text", o.tags().toArray()));
-                    ps.setLong(3, o.id());
+                    ps.setObject(3, o.pBest(), java.sql.Types.DOUBLE);
+                    ps.setLong(4, o.id());
                     return ps;
                 });
             }
         }
+        return rows.size();
+    }
+
+    /** Re-runs model scoring for the player's latest DONE run (idempotent). Empty when there is no such run. */
+    public java.util.OptionalInt rescoreLatest(String username) {
+        List<UUID> runs = jdbc.queryForList("""
+            select id from analysis_run where lower(username) = lower(?) and status = 'DONE'
+            order by created_at desc limit 1""", UUID.class, username);
+        if (runs.isEmpty()) return java.util.OptionalInt.empty();
+        return java.util.OptionalInt.of(score(runs.get(0)));
     }
 }

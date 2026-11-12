@@ -27,4 +27,18 @@ class ModelClientTest {
         assertEquals(List.of("opening_error"), out.get(0).tags());
         server.verify();
     }
+
+    @Test
+    void parsesPBestAndNull() {
+        RestClient.Builder b = RestClient.builder().baseUrl("http://model");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(b).build();
+        server.expect(requestTo("http://model/analyze"))
+            .andRespond(withSuccess("[{\"id\":1,\"p_played\":0.2,\"p_best\":0.6,\"tags\":[]},{\"id\":2,\"p_played\":0.1,\"p_best\":null,\"tags\":[]}]",
+                MediaType.APPLICATION_JSON));
+        var out = new ModelClient(b.build()).analyze(List.of(
+            new ModelClient.MoveIn(1, "fen", 1500, "e2e4", "d2d4", 0, null),
+            new ModelClient.MoveIn(2, "fen", 1500, "e2e4", null, 0, null)));
+        assertEquals(0.6, out.get(0).pBest(), 1e-9);
+        assertNull(out.get(1).pBest());
+    }
 }

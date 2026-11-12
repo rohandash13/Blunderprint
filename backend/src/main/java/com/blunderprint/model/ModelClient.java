@@ -19,7 +19,12 @@ public class ModelClient {
                          int cpl,
                          @JsonProperty("clock_cs") Integer clockCs) {}
 
-    public record MoveOut(long id, @JsonProperty("p_played") double pPlayed, List<String> tags) {}
+    public record MoveOut(long id, @JsonProperty("p_played") double pPlayed, List<String> tags,
+                          @JsonProperty("p_best") Double pBest) {
+        public MoveOut(long id, double pPlayed, List<String> tags) {
+            this(id, pPlayed, tags, null);
+        }
+    }
 
     private final RestClient client;
 

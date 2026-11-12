@@ -70,6 +70,17 @@ public class AnalysisController {
         return Map.of("jobsEnqueued", queue.enqueueForRun(runId));
     }
 
+    @PostMapping("/admin/players/{username}/rescore")
+    public ResponseEntity<Map<String, Object>> rescore(@PathVariable String username) {
+        try {
+            var n = analysis.rescoreLatest(username);
+            if (n.isEmpty()) return ResponseEntity.notFound().build();
+            return ResponseEntity.ok(Map.of("rescored", n.getAsInt()));
+        } catch (org.springframework.web.client.RestClientException e) {
+            return ResponseEntity.status(503).body(Map.of("error", "model service unavailable: " + e.getMessage()));
+        }
+    }
+
     @GetMapping("/admin/workers/stats")
     public Map<String, Long> workerStats() {
         return pool.stats();

@@ -59,6 +59,36 @@ class AnalysisServiceIT extends PostgresIT {
     }
 
     @Test
+    void tickStoresPBest() {
+        seed();
+        jdbc.update("insert into eval_cache(fen_key, engine, depth, best_uci, score_cp) values ('A','sf',10,'d2d4',30)");
+        jdbc.update("insert into eval_cache(fen_key, engine, depth, best_uci, score_cp) values ('B','sf',10,'e7e5',200)");
+        when(model.analyze(anyList())).thenAnswer(inv -> {
+            List<ModelClient.MoveIn> in = inv.getArgument(0);
+            return List.of(new ModelClient.MoveOut(in.get(0).id(), 0.4, List.of(), 0.07));
+        });
+        analysis.tick();
+        assertEquals(0.07, jdbc.queryForObject("select p_best from move_analysis", Double.class), 1e-9);
+    }
+
+    @Test
+    void rescoreLatestRefreshesDoneRunAndIsIdempotent() {
+        UUID run = seed();
+        jdbc.update("update analysis_run set status = 'DONE' where id = ?", run);
+        jdbc.update("insert into eval_cache(fen_key, engine, depth, best_uci, score_cp) values ('A','sf',10,'d2d4',30)");
+        jdbc.update("insert into eval_cache(fen_key, engine, depth, best_uci, score_cp) values ('B','sf',10,'e7e5',200)");
+        when(model.analyze(anyList())).thenAnswer(inv -> {
+            List<ModelClient.MoveIn> in = inv.getArgument(0);
+            return List.of(new ModelClient.MoveOut(in.get(0).id(), 0.4, List.of("opening_error"), 0.3));
+        });
+        assertEquals(1, analysis.rescoreLatest("U").getAsInt());   // username match is case-insensitive
+        assertEquals(1, analysis.rescoreLatest("u").getAsInt());
+        assertEquals(1, jdbc.queryForObject("select count(*) from move_analysis", Integer.class));
+        assertEquals(0.3, jdbc.queryForObject("select p_best from move_analysis", Double.class), 1e-9);
+        assertTrue(analysis.rescoreLatest("nobody").isEmpty());
+    }
+
+    @Test
     void tickWaitsWhileEvalsAreOutstanding() {
         UUID run = seed();
         jdbc.update("insert into eval_cache(fen_key, engine, depth, score_cp) values ('A','sf',10,30)");
