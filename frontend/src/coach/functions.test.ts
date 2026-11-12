@@ -90,6 +90,15 @@ describe("report and show_mistake", () => {
     expect(r.movesAnalyzed).toBe(400);
   });
 
+  it("get_report notes that difficulty is unavailable when every row is unrated", async () => {
+    const unrated: Report = { ...REPORT, levelCounts: { slip: 0, tricky: 0, deep: 0, unrated: 7 } };
+    const r = await call("get_report", {}, newCoachState(), effects(unrated).fx);
+    expect(r.note).toBe("Difficulty has not been computed for these games yet; levels are unavailable.");
+    expect((await call("get_report", {}, newCoachState(), effects().fx)).note).toBeUndefined();
+    const mixed: Report = { ...REPORT, levelCounts: { slip: 0, tricky: 1, deep: 0, unrated: 7 } };
+    expect((await call("get_report", {}, newCoachState(), effects(mixed).fx)).note).toBeUndefined();
+  });
+
   it("get_report reports a missing report", async () => {
     expect(await call("get_report", {}, newCoachState(), effects(null).fx)).toEqual({ error: "no report yet" });
   });
@@ -300,10 +309,13 @@ describe("try_move and reset_position", () => {
     expect(r.materialForYou).toBe(0);
     expect(r.note).toMatch(/No engine line/);
     expect(s.drill!.exploreFen).toBe(AFTER_E4_CJS);
-    const bad = await call("try_move", { move: "e4" }, s, e.fx); // black has no e4 move
+    const wrongSide = await call("try_move", { move: "e5" }, s, e.fx); // engine was down, so it is Black's turn
+    expect(wrongSide.error).toMatch(/opponent's move/);
+    s.drill!.exploreFen = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
+    const bad = await call("try_move", { move: "e5" }, s, e.fx); // white has no e5 move now
     expect(bad.verdict).toBe("illegal");
-    const ok = await call("try_move", { move: "e5" }, s, e.fx);
-    expect(ok.yourMove).toBe("pawn to e5");
+    const ok = await call("try_move", { move: "Nf3" }, s, e.fx);
+    expect(ok.yourMove).toBe("knight to f3");
   });
 
   it("reset_position restores the drill FEN", async () => {
@@ -349,7 +361,7 @@ describe("playout", () => {
   });
 
   it("caps the line at PLAYOUT_PLIES and drops an illegal tail", async () => {
-    const long = { bestUci: "d7d5", scoreCp: 0, pv: ["d7d5", "c2c4", "d5c4", "e2e4", "e7e5", "g1f3", "e5d4", "f1c4", "g8f6", "e1g1", "b8c6", "c1g5"] };
+    const long = { bestUci: "d7d5", scoreCp: 0, pv: ["d7d5", "c2c4", "d5c4", "e2e3", "e7e5", "g1f3", "e5d4", "f1c4", "g8f6", "e1g1", "b8c6", "c1g5"] };
     const s = newCoachState();
     const { fx, of } = effects(REPORT, long);
     await call("start_drill", { tag: "hanging_piece" }, s, fx);
@@ -424,5 +436,97 @@ describe("step_line", () => {
     expect(s.drill!.exploreFen).toBe(START);
     expect((await call("step_line", { direction: "forward" }, s, fx)).error).toBeDefined();
     expect((await call("step_line", { direction: "sideways" }, s, fx)).error).toBeDefined();
+  });
+});
+
+describe("playout ends with the player to move", () => {
+  const LONG = ["d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "g1f3", "f8e7", "e2e3", "e8g8", "f1d3", "c7c5"];
+
+  it("caps at an odd 9 plies and a second try_move works from there", async () => {
+    expect(PLAYOUT_PLIES).toBe(9);
+    const s = newCoachState();
+    const { fx, of } = effects(REPORT, { bestUci: "d7d5", scoreCp: -60, pv: LONG });
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    const r = await call("try_move", { move: "d4" }, s, fx);
+    expect((of("animateLine")[0].args[1] as string[]).length).toBe(9);
+    expect(r.engineLine).toHaveLength(9);
+    expect(s.drill!.exploreFen.split(" ")[1]).toBe("w");
+    const r2 = await call("try_move", { move: "Bd3" }, s, fx);
+    expect(r2.error).toBeUndefined();
+    expect(r2.yourMove).toBe("bishop to d3");
+    expect(r2.evalForYou).toBe(60);
+  });
+
+  it("drops the last ply when truncation leaves an even count", async () => {
+    const s = newCoachState();
+    const { fx, of } = effects(REPORT, { bestUci: "d7d5", scoreCp: 0, pv: ["d7d5", "c2c4", "e7e6", "b1c3", "a1a8"] });
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    const r = await call("play_move", { move: "d4" }, s, fx);
+    expect(of("animateLine")[0].args[1]).toEqual(["d7d5", "c2c4", "e7e6"]);
+    expect(r.engineLine).toHaveLength(3);
+  });
+
+  it("eval and colors follow the drill side (Black drill)", async () => {
+    const s = newCoachState();
+    const { fx, of } = effects(REPORT, { bestUci: "b1c3", scoreCp: 100, pv: ["b1c3", "b8c6", "g1f3"] });
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    await call("start_drill", { tag: "hanging_piece" }, s, fx); // second example: Black to move
+    expect(s.drill!.example.fen).toBe(AFTER_E4);
+    const r = await call("try_move", { move: "e5" }, s, fx);
+    expect(r.evalForYou).toBe(-100);
+    expect(of("animateLine")[0].args[2]).toEqual([REPLY, BEST, REPLY]);
+  });
+
+  it("try_move refuses when the opponent is to move", async () => {
+    const s = newCoachState();
+    const { fx, of } = effects(REPORT, null);
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    s.drill!.exploreFen = AFTER_E4;
+    const r = await call("try_move", { move: "e5" }, s, fx);
+    expect(r).toEqual({ error: "It's the opponent's move in this position. Step forward, or reset to the drill." });
+    expect(of("flashMove")).toHaveLength(0);
+    expect(s.drill!.exploreFen).toBe(AFTER_E4);
+  });
+
+  it("step_line to an opponent-to-move frame leaves exploreFen alone", async () => {
+    const s = newCoachState();
+    const { fx } = effects();
+    fx.step = () => ({ fen: AFTER_E4, ply: 1, total: 3 });
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    expect(await call("step_line", { direction: "back" }, s, fx)).toEqual({ ply: 1, total: 3 });
+    expect(s.drill!.exploreFen).toBe(START);
+  });
+});
+
+describe("wrong attempts do not reveal the answer", () => {
+  // Drill best is e2e4. After 1.d4 d5 the engine line has White playing e4 at a player ply.
+  const LEAK = { bestUci: "d7d5", scoreCp: 0, pv: ["d7d5", "e2e4", "d5e4"] };
+
+  it("cuts the line before the best move on play_move and try_move", async () => {
+    const s = newCoachState();
+    const { fx, of } = effects(REPORT, LEAK);
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    const r = await call("play_move", { move: "d4" }, s, fx);
+    expect(of("animateLine")[0].args[1]).toEqual(["d7d5"]);
+    expect(r.engineLine).toHaveLength(1);
+    expect(JSON.stringify(r)).not.toContain("e4");
+    const t = await call("try_move", { move: "d4" }, s, fx);
+    expect(of("animateLine")[1].args[1]).toEqual(["d7d5"]);
+    expect(t.engineLine).toHaveLength(1);
+  });
+
+  it("does not cut once the drill is solved or revealed", async () => {
+    const s = newCoachState();
+    const { fx, of } = effects(REPORT, LEAK);
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    await call("play_move", { move: "e4" }, s, fx); // solved
+    await call("play_move", { move: "d4" }, s, fx);
+    expect(of("animateLine").at(-1)!.args[1]).toEqual(["d7d5", "e2e4", "d5e4"]);
+    const s2 = newCoachState();
+    const e2 = effects(REPORT, LEAK);
+    await call("start_drill", { tag: "hanging_piece" }, s2, e2.fx);
+    await call("reveal_answer", {}, s2, e2.fx);
+    await call("try_move", { move: "d4" }, s2, e2.fx);
+    expect(e2.of("animateLine")[0].args[1]).toEqual(["d7d5", "e2e4", "d5e4"]);
   });
 });

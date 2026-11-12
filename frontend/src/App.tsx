@@ -66,6 +66,18 @@ export default function App() {
   };
   const arrowOf = (uci: string, color: string): Arrow => [uci.slice(0, 2), uci.slice(2, 4), color];
 
+  const reportReq = useRef(0);
+  // A level change drops the drill, so clear the board, arrows and line stepper with it.
+  const clearBoard = () => {
+    queue.current.cancel();
+    showFen(START);
+    setArrows([]);
+    setFlash([]);
+    setVerdict(null);
+    history.current.reset({ fen: START, arrows: [] });
+    setLinePos(null);
+  };
+
   const syncLinePos = () => setLinePos(history.current.position.total > 0 ? history.current.position : null);
 
   const effects: CoachEffects = {
@@ -136,7 +148,10 @@ export default function App() {
         return null;
       }
     },
-    setLevels: (lv) => setLevelsState(lv),
+    setLevels: (lv) => {
+      setLevelsState(lv);
+      clearBoard();
+    },
     step: (dir) => {
       const frame = history.current.step(dir);
       if (!frame) return null;
@@ -151,13 +166,15 @@ export default function App() {
 
   function stepUi(dir: StepDirection) {
     const r = effects.step(dir);
-    if (r && coach.current.drill) coach.current.drill.exploreFen = r.fen;
+    const d = coach.current.drill;
+    if (r && d && r.fen.split(" ")[1] === d.example.fen.split(" ")[1]) d.exploreFen = r.fen; // only where the drill side is to move
   }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
       if (e.key === "ArrowLeft") stepUi("back");
       if (e.key === "ArrowRight") stepUi("forward");
     };
@@ -293,21 +310,26 @@ export default function App() {
     coach.current.levels = ordered;
     coach.current.report = null;
     coach.current.drill = null;
+    clearBoard();
     if (username) await loadReport(ordered);
   }
 
   async function loadReport(lv: Level[] = levels) {
     setError(null);
+    const req = ++reportReq.current;
     try {
       const drilled = coach.current.drilled;
       coach.current = newCoachState();
       coach.current.levels = lv;
       coach.current.drilled = drilled;
       const r = await fetchReport(username, lv);
+      if (req !== reportReq.current) return; // a newer load started
       coach.current.report = r;
       setReport(r);
       if (!r) setError(`No finished analysis for ${username} yet.`);
     } catch (err) {
+      if (req !== reportReq.current) return;
+      setReport(null);
       setError(err instanceof Error ? err.message : String(err));
     }
   }
@@ -363,6 +385,9 @@ export default function App() {
                     {LEVEL_NAMES[l]} <span>{report.levelCounts?.[l] ?? 0}</span>
                   </button>
                 ))}
+                {(report.levelCounts?.unrated ?? 0) > 0 && (
+                  <span className="chip" aria-label="Unrated mistakes">{LEVEL_NAMES.unrated} <span>{report.levelCounts.unrated}</span></span>
+                )}
               </div>
               <table className="report">
                 <thead>
@@ -388,7 +413,7 @@ export default function App() {
                         <td>{Math.round(p.avgCpl)} cp</td>
                         <td>
                           {p.examples[0]
-                            ? `${LEVEL_NAMES[p.examples[0].level]}${p.examples[0].harderThanPercent == null ? "" : ` · harder than ${p.examples[0].harderThanPercent}% of your mistakes`}`
+                            ? `${LEVEL_NAMES[p.examples[0].level] ?? "—"}${p.examples[0].harderThanPercent == null ? "" : ` · harder than ${p.examples[0].harderThanPercent}% of your mistakes`}`
                             : "—"}
                         </td>
                         <td>{p.examples.length}</td>

@@ -1,6 +1,6 @@
 import { describeMove, lineFacts, material, spokenMove, type MoveFacts } from "../chess/facts";
 import { parseMove } from "../chess/moveParse";
-import { judge, uciOf } from "../chess/verdict";
+import { judge, sameMove, uciOf } from "../chess/verdict";
 import { describeEval } from "../chess/evalText";
 import { hintLadder } from "./hints";
 import type { StepDirection } from "./lineHistory";
@@ -147,7 +147,8 @@ export interface CoachEffects {
   step(dir: StepDirection): { fen: string; ply: number; total: number } | null;
 }
 
-export const PLAYOUT_PLIES = 10;
+/** Odd, so the line (opponent, player, ...) ends with the player to move. */
+export const PLAYOUT_PLIES = 9;
 const PICKABLE: Level[] = ["slip", "tricky", "deep"];
 
 export function newCoachState(): CoachState {
@@ -185,9 +186,14 @@ function factsOut(f: MoveFacts | null) {
 
 const forYou = (diff: number, side: "White" | "Black") => (side === "White" ? diff : -diff);
 
-/** After the player's move (already flashed), play the engine continuation and describe it. */
-async function playOut(mine: MoveFacts, fx: CoachEffects) {
-  const you = mine.side;
+const sideToMove = (fen: string): "White" | "Black" => (fen.split(" ")[1] === "w" ? "White" : "Black");
+const isOpen = (d: Drill) => !d.solved && !d.revealed;
+
+/**
+ * After the player's move (already flashed), play the engine continuation and describe it.
+ * `you` is the drill side. `hideBest`, when set, cuts the line before the player ply that would play it.
+ */
+async function playOut(mine: MoveFacts, you: "White" | "Black", fx: CoachEffects, hideBest: string | null = null) {
   if (mine.mate) {
     return { engineLine: [], evalForYou: 10000, evalSpoken: "Checkmate, you win", materialForYou: forYou(mine.materialAfter, you), finalFen: mine.fenAfter };
   }
@@ -195,11 +201,16 @@ async function playOut(mine: MoveFacts, fx: CoachEffects) {
   if (!a) {
     return { engineLine: null, evalForYou: null, evalSpoken: null, materialForYou: forYou(mine.materialAfter, you), finalFen: mine.fenAfter, note: "No engine line available. Do not describe a continuation." };
   }
-  const line = lineFacts(mine.fenAfter, a.pv.length > 0 ? a.pv : [a.bestUci], PLAYOUT_PLIES);
+  let line = lineFacts(mine.fenAfter, a.pv.length > 0 ? a.pv : [a.bestUci], PLAYOUT_PLIES);
+  if (hideBest) {
+    const cut = line.findIndex((f) => f.side === you && sameMove(f.uci, hideBest));
+    if (cut >= 0) line = line.slice(0, cut);
+  }
+  if (line.length % 2 === 0) line = line.slice(0, -1); // keep the player to move at the end
   if (line.length > 0) {
     await fx.animateLine(mine.fenAfter, line.map((f) => f.uci), line.map((f) => (f.side === you ? BEST : REPLY)));
   }
-  const evalForYou = -a.scoreCp || 0; // scoreCp is from the opponent's side after the player's move
+  const evalForYou = you === mine.side ? -a.scoreCp || 0 : a.scoreCp || 0; // scoreCp is from the side to move after `mine`
   const last = line[line.length - 1];
   return {
     engineLine: line.map((f, i) => ({ ply: i + 1, side: f.side, spoken: f.spoken, captured: f.captured ?? null, check: f.check, fork: f.fork })),
@@ -240,7 +251,10 @@ export async function handleFunctionCall(
   if (!report) return { error: "no report yet" };
 
   if (name === "get_report") {
+    const c = report.levelCounts;
+    const allUnrated = !!c && c.unrated > 0 && c.unrated === c.slip + c.tricky + c.deep + c.unrated;
     return {
+      ...(allUnrated ? { note: "Difficulty has not been computed for these games yet; levels are unavailable." } : {}),
       movesAnalyzed: report.movesAnalyzed,
       mistakes: report.mistakes,
       candidates: report.candidates,
@@ -309,7 +323,7 @@ async function playMove(args: Record<string, unknown>, state: CoachState, fx: Co
   const mine = describeMove(ex.fen, j.uci!);
   const facts = factsOut(mine);
   const spoken = mine?.spoken ?? j.uci!;
-  const { finalFen, ...play } = mine ? await playOut(mine, fx) : { finalFen: ex.fen, engineLine: null, evalForYou: null, evalSpoken: null, materialForYou: 0 };
+  const { finalFen, ...play } = mine ? await playOut(mine, sideToMove(ex.fen), fx, isOpen(d) ? ex.best : null) : { finalFen: ex.fen, engineLine: null, evalForYou: null, evalSpoken: null, materialForYou: 0 };
   if (j.verdict === "best") {
     d.solved = true;
     d.exploreFen = finalFen;
@@ -378,11 +392,15 @@ async function tryMove(args: Record<string, unknown>, state: CoachState, fx: Coa
   const d = state.drill;
   if (!d) return NO_DRILL;
   const input = String(args.move ?? "");
+  const you = sideToMove(d.example.fen);
+  if (sideToMove(d.exploreFen) !== you) {
+    return { error: "It's the opponent's move in this position. Step forward, or reset to the drill." };
+  }
   const parsed = parseMove(d.exploreFen, input);
   const mine = parsed ? describeMove(d.exploreFen, uciOf(parsed)) : null;
   if (!parsed || !mine) return { verdict: "illegal", reason: `No single legal move matches "${input}"` };
   await fx.flashMove(d.exploreFen, mine.uci);
-  const { finalFen, ...play } = await playOut(mine, fx);
+  const { finalFen, ...play } = await playOut(mine, you, fx, isOpen(d) ? d.example.best : null);
   d.exploreFen = finalFen;
   return { yourMove: mine.spoken, ...play };
 }
@@ -415,6 +433,6 @@ function stepLine(args: Record<string, unknown>, state: CoachState, fx: CoachEff
   if (!["back", "forward", "start", "end"].includes(dir)) return { error: "direction must be back, forward, start or end" };
   const r = fx.step(dir as StepDirection);
   if (!r) return { error: "Nothing to step to. Say so." };
-  if (state.drill) state.drill.exploreFen = r.fen;
+  if (state.drill && sideToMove(r.fen) === sideToMove(state.drill.example.fen)) state.drill.exploreFen = r.fen;
   return { ply: r.ply, total: r.total };
 }
