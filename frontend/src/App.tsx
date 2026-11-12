@@ -1,7 +1,7 @@
 import { useRef, useState, type CSSProperties } from "react";
 import { Chessboard } from "react-chessboard";
 import { handleFunctionCall, newCoachState, type CoachEffects } from "./coach/functions";
-import { sanOf } from "./chess/verdict";
+import { Chess } from "chess.js";
 import { DEFAULT_CONFIG, buildSettings } from "./voice/settings";
 import { AgentSocket, type AgentEvent } from "./voice/agentSocket";
 import { Mic, Player } from "./voice/audio";
@@ -43,16 +43,30 @@ export default function App() {
       setReport(r);
       return r;
     },
-    showPosition: (f, h) => {
+    // Minimal stubs; Task C4 builds the real animation, arrows and table.
+    showPosition: (f) => {
       setFen(f);
-      setHighlight(h ?? {});
+      setHighlight({});
       setVerdict(null);
     },
-    playOnBoard: (uci) => {
-      const d = coach.current.drill;
-      if (!d) return;
-      setHighlight({ played: uci });
-      setVerdict(`You played ${sanOf(d.example.fen, uci)}`);
+    animateLine: async (f, ucis) => {
+      const c = new Chess(f);
+      for (const u of ucis) c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
+      setFen(c.fen());
+    },
+    flashMove: async (f, uci) => {
+      const c = new Chess(f);
+      c.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
+      setFen(c.fen());
+    },
+    analyze: async (f) => {
+      const res = await fetch("/engine/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fen: f }),
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as { bestUci: string; scoreCp: number; pv: string[] };
     },
   };
 
@@ -167,7 +181,7 @@ export default function App() {
       return;
     }
     const r = (await handleFunctionCall("play_move", { move }, coach.current, effects)) as Record<string, unknown>;
-    setVerdict(r.error ? String(r.error) : r.verdict === "illegal" ? String(r.reason) : `${r.san}: ${r.verdict} (best was ${r.bestMove})`);
+    setVerdict(r.error ? String(r.error) : r.verdict === "illegal" ? String(r.reason) : `${r.spoken}: ${r.verdict}`);
   }
 
   async function loadReport() {

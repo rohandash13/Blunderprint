@@ -19,7 +19,7 @@ describe("buildSettings", () => {
   });
 
   it("declares the coach functions and names the player in the prompt", () => {
-    expect(s.agent.think.functions.map((f: { name: string }) => f.name)).toEqual(["get_report", "show_mistake", "start_drill", "play_move"]);
+    expect(s.agent.think.functions.map((f: { name: string }) => f.name)).toEqual(["get_report", "show_mistake", "start_drill", "play_move", "get_hint", "reveal_answer", "explain_line", "try_move", "reset_position"]);
     expect(s.agent.think.prompt).toContain("alice");
     expect(s.agent.think.prompt).toContain("play_move");
     expect(typeof s.agent.greeting).toBe("string");
