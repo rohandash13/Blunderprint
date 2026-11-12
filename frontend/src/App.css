@@ -11,7 +11,13 @@ button.live { background: #c0392b; color: #fff; border-color: #c0392b; }
 .error { color: #b00020; }
 .layout { display: grid; grid-template-columns: 460px 1fr; gap: 24px; }
 .verdict { font-weight: 600; }
-.pattern { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+table.report { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+table.report th, table.report td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e2e2de; vertical-align: top; }
+table.report thead th { font-size: 0.8rem; color: #555; }
+table.report tbody th { font-weight: 600; }
+table.report small { display: block; font-weight: 400; font-size: 0.75rem; color: #666; }
+table.report tr.muted { color: #888; }
+table.report tr.muted th, table.report tr.muted small { color: #888; font-weight: 400; }
 .transcript { max-height: 420px; overflow-y: auto; border-top: 1px solid #ddd; margin-top: 12px; padding-top: 8px; }
 .transcript .user { color: #333; }
 .transcript .assistant { color: #0b5394; }

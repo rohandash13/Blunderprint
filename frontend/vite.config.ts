@@ -8,6 +8,7 @@ export default defineConfig({
     proxy: {
       "/voice": "http://localhost:8080",
       "/players": "http://localhost:8080",
+      "/engine": "http://localhost:8080",
     },
   },
   test: { environment: "node" },

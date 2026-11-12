@@ -1,6 +1,9 @@
 import { useRef, useState, type CSSProperties } from "react";
 import { Chessboard } from "react-chessboard";
-import { handleFunctionCall, newCoachState, type CoachEffects } from "./coach/functions";
+import type { Arrow as CbArrow } from "react-chessboard/dist/chessboard/types";
+import { handleFunctionCall, newCoachState, PLAYED, type Arrow, type CoachEffects } from "./coach/functions";
+import { AnimationQueue } from "./coach/animQueue";
+import { patternLabel, sortPatterns } from "./coach/patternLabels";
 import { Chess } from "chess.js";
 import { DEFAULT_CONFIG, buildSettings } from "./voice/settings";
 import { AgentSocket, type AgentEvent } from "./voice/agentSocket";
@@ -23,7 +26,8 @@ export default function App() {
   const [username, setUsername] = useState("");
   const [report, setReport] = useState<Report | null>(null);
   const [fen, setFen] = useState(START);
-  const [highlight, setHighlight] = useState<{ played?: string; best?: string }>({});
+  const [arrows, setArrows] = useState<Arrow[]>([]);
+  const [flash, setFlash] = useState<string[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +40,14 @@ export default function App() {
   const player = useRef<Player | null>(null);
   const recorder = useRef<LatencyRecorder | null>(null);
   const cancelled = useRef(new Set<string>());
+  const queue = useRef(new AnimationQueue());
+
+  const afterMove = (f: string, uci: string) => {
+    const c = new Chess(f);
+    c.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
+    return c.fen();
+  };
+  const arrowOf = (uci: string, color: string): Arrow => [uci.slice(0, 2), uci.slice(2, 4), color];
 
   const effects: CoachEffects = {
     fetchReport: async () => {
@@ -43,22 +55,40 @@ export default function App() {
       setReport(r);
       return r;
     },
-    // Minimal stubs; Task C4 builds the real animation, arrows and table.
-    showPosition: (f) => {
+    // Setting a static position (reset, drill, show) cancels any running animation.
+    showPosition: (f, a) => {
+      queue.current.cancel();
       setFen(f);
-      setHighlight({});
+      setArrows(a ?? []);
+      setFlash([]);
       setVerdict(null);
     },
-    animateLine: async (f, ucis) => {
-      const c = new Chess(f);
-      for (const u of ucis) c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
-      setFen(c.fen());
-    },
-    flashMove: async (f, uci) => {
-      const c = new Chess(f);
-      c.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
-      setFen(c.fen());
-    },
+    animateLine: (f, ucis, color) =>
+      queue.current.run(async (ctx) => {
+        let cur = f;
+        setFen(cur);
+        setFlash([]);
+        for (const u of ucis) {
+          setArrows([arrowOf(u, color)]);
+          await ctx.sleep(450);
+          if (ctx.cancelled()) return;
+          cur = afterMove(cur, u);
+          setFen(cur);
+          await ctx.sleep(450);
+          if (ctx.cancelled()) return;
+        }
+      }),
+    flashMove: (f, uci) =>
+      queue.current.run(async (ctx) => {
+        setFen(f);
+        setArrows([arrowOf(uci, PLAYED)]);
+        setFlash([uci.slice(0, 2), uci.slice(2, 4)]);
+        await ctx.sleep(600);
+        if (ctx.cancelled()) return;
+        setFlash([]);
+        setArrows([]);
+        setFen(afterMove(f, uci));
+      }),
     analyze: async (f) => {
       const res = await fetch("/engine/analyze", {
         method: "POST",
@@ -155,6 +185,7 @@ export default function App() {
   function stopVoice() {
     const s = socket.current;
     socket.current = null;
+    queue.current.cancel();
     mic.current?.stop();
     s?.close();
     player.current?.stop();
@@ -198,14 +229,7 @@ export default function App() {
   }
 
   const squareStyles: Record<string, CSSProperties> = {};
-  if (highlight.played) {
-    squareStyles[highlight.played.slice(0, 2)] = { background: "rgba(220, 60, 60, 0.45)" };
-    squareStyles[highlight.played.slice(2, 4)] = { background: "rgba(220, 60, 60, 0.45)" };
-  }
-  if (highlight.best) {
-    squareStyles[highlight.best.slice(0, 2)] = { background: "rgba(60, 170, 90, 0.45)" };
-    squareStyles[highlight.best.slice(2, 4)] = { background: "rgba(60, 170, 90, 0.45)" };
-  }
+  for (const sq of flash) squareStyles[sq] = { background: "rgba(220, 60, 60, 0.45)" };
 
   return (
     <main className="app">
@@ -228,7 +252,7 @@ export default function App() {
 
       <section className="layout">
         <div className="board">
-          <Chessboard id="bp" position={fen} boardWidth={440} arePiecesDraggable={false} customSquareStyles={squareStyles} />
+          <Chessboard id="bp" position={fen} boardWidth={440} arePiecesDraggable={false} customSquareStyles={squareStyles} customArrows={arrows as CbArrow[]} />
           <div className="row">
             <input value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submitTyped()} placeholder="Type a move (e.g. Nf3)" aria-label="Type a move" />
             <button onClick={submitTyped}>Play</button>
@@ -240,13 +264,37 @@ export default function App() {
           {report && (
             <div className="patterns">
               <h2>{report.username}: {report.mistakes} mistakes in {report.movesAnalyzed} moves</h2>
-              {report.patterns.map((p) => (
-                <div key={p.tag} className="pattern">
-                  <strong>{p.tag.replace(/_/g, " ")}</strong> × {p.count} (avg {Math.round(p.avgCpl)} cp)
-                  <button onClick={() => { coach.current.drill = null; void handleFunctionCall("show_mistake", { tag: p.tag, index: 0 }, coach.current, effects); }}>Show</button>
-                  <button onClick={() => handleFunctionCall("start_drill", { tag: p.tag }, coach.current, effects)}>Drill</button>
-                </div>
-              ))}
+              <table className="report">
+                <thead>
+                  <tr>
+                    <th scope="col">Pattern</th>
+                    <th scope="col">Mistakes</th>
+                    <th scope="col">Avg loss</th>
+                    <th scope="col">Examples</th>
+                    <th scope="col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortPatterns(report.patterns).map((p) => {
+                    const label = patternLabel(p.tag);
+                    return (
+                      <tr key={p.tag} className={p.tag === "other" ? "muted" : undefined}>
+                        <th scope="row">
+                          {label.name}
+                          {label.description && <small>{label.description}</small>}
+                        </th>
+                        <td>{p.count}</td>
+                        <td>{Math.round(p.avgCpl)} cp</td>
+                        <td>{p.examples.length}</td>
+                        <td>
+                          <button onClick={() => { coach.current.drill = null; void handleFunctionCall("show_mistake", { tag: p.tag, index: 0 }, coach.current, effects); }}>Show</button>{" "}
+                          <button onClick={() => void handleFunctionCall("start_drill", { tag: p.tag }, coach.current, effects)}>Drill</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
           <div className="transcript" aria-live="polite">
