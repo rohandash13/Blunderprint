@@ -3,6 +3,7 @@ package com.blunderprint.report;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.blunderprint.PostgresIT;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,11 +17,15 @@ class ReportServiceIT extends PostgresIT {
     }
 
     private void move(UUID run, int ply, int cpl, Double p, String tags) {
+        move(run, ply, cpl, p, tags, 0.3);
+    }
+
+    private void move(UUID run, int ply, int cpl, Double p, String tags, Double pBest) {
         long id = jdbc.queryForObject("""
             insert into move(run_id, game_id, ply, fullmove, mover, rating, before_fen, before_key, after_key, played_uci, played_san)
             values (?, 'g1', ?, ?, 'w', 1500, 'FEN', 'k', 'k2', 'e2e4', 'e4') returning id""", Long.class, run, ply, ply / 2 + 1);
-        jdbc.update("insert into move_analysis(move_id, cpl, best_uci, p_played, tags) values (?, ?, 'd2d4', ?, ?::text[])",
-            id, cpl, p, tags);
+        jdbc.update("insert into move_analysis(move_id, cpl, best_uci, p_played, tags, p_best) values (?, ?, 'd2d4', ?, ?::text[], ?)",
+            id, cpl, p, tags, pBest);
     }
 
     @Test
@@ -87,5 +92,45 @@ class ReportServiceIT extends PostgresIT {
         move(run, 2, 300, 0.4, "{hanging_piece}");
         var ex = reports.report("alice").orElseThrow().patterns().get(0).examples().get(0);
         assertTrue(ex.pv().isEmpty());
+    }
+
+    @Test
+    void filtersByLevelAndCountsAllLevels() {
+        UUID run = UUID.randomUUID();
+        seed(run, "DONE");
+        move(run, 2, 900, 0.4, "{hanging_piece}", 0.9);    // slip
+        move(run, 4, 200, 0.4, "{hanging_piece}", 0.3);    // tricky
+        move(run, 6, 300, 0.4, "{missed_tactic}", 0.05);   // deep
+        move(run, 8, 300, 0.4, "{missed_tactic}", null);   // unrated
+        var r = reports.report("alice").orElseThrow();
+        assertEquals(List.of("tricky", "deep"), r.levels());
+        assertEquals(java.util.Map.of("slip", 1, "tricky", 1, "deep", 1, "unrated", 1), r.levelCounts());
+        var hanging = r.patterns().stream().filter(p -> p.tag().equals("hanging_piece")).findFirst().orElseThrow();
+        assertEquals(1, hanging.count());
+        assertEquals("tricky", hanging.examples().get(0).level());
+        assertEquals(0.3, hanging.examples().get(0).pBest(), 1e-9);
+        var all = reports.report("alice", List.of("slip", "tricky", "deep", "unrated")).orElseThrow();
+        assertEquals(2, all.patterns().stream().filter(p -> p.tag().equals("hanging_piece")).findFirst().orElseThrow().count());
+    }
+
+    @Test
+    void sortsExamplesByCostTimesDifficulty() {
+        UUID run = UUID.randomUUID();
+        seed(run, "DONE");
+        move(run, 2, 400, 0.4, "{missed_tactic}", 0.45);   // 400 * 0.55 = 220
+        move(run, 4, 300, 0.4, "{missed_tactic}", 0.02);   // 300 * 0.98 = 294
+        var ex = reports.report("alice").orElseThrow().patterns().get(0).examples();
+        assertEquals(300, ex.get(0).cpl());
+        assertEquals(400, ex.get(1).cpl());
+    }
+
+    @Test
+    void mistakeRowsCarryLevel() {
+        UUID run = UUID.randomUUID();
+        seed(run, "DONE");
+        move(run, 2, 300, 0.4, "{hanging_piece}", 0.05);
+        var row = reports.mistakes("alice").get(0);
+        assertEquals("deep", row.level());
+        assertEquals(0.05, row.pBest(), 1e-9);
     }
 }

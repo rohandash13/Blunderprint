@@ -46,4 +46,10 @@ class AnalysisControllerIT extends PostgresIT {
         mvc.perform(post("/admin/workers").contentType(MediaType.APPLICATION_JSON).content("{\"count\":0}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.workers").value(0));
     }
+
+    @Test
+    void reportRejectsUnknownLevel() throws Exception {
+        mvc.perform(get("/players/alice/report").param("levels", "hard"))
+            .andExpect(status().isBadRequest());
+    }
 }
