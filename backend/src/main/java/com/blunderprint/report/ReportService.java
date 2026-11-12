@@ -71,10 +71,13 @@ public class ReportService {
             rs -> { levelCounts.put(rs.getString("level"), rs.getInt("n")); },
             difficulty.slipMin(), difficulty.deepMax(), run, mistakeCpl, minP);
 
-        String in = String.join(",", Collections.nCopies(levels.size(), "?"));
+        String in = String.join(",", Collections.nCopies(levels.size() + (difficulty.empty() && !levels.contains("unrated") ? 1 : 0), "?"));
         List<Object> params = new ArrayList<>(List.of(difficulty.slipMin(), difficulty.deepMax(), run, mistakeCpl, minP,
             difficulty.slipMin(), difficulty.deepMax()));
-        params.addAll(levels);
+        // Without any rated candidate there are no levels to filter by, so unrated rows are shown rather than nothing.
+        List<String> effective = new ArrayList<>(levels);
+        if (difficulty.empty() && !effective.contains("unrated")) effective.add("unrated");
+        params.addAll(effective);
 
         Map<String, List<Example>> byTag = new LinkedHashMap<>();
         Map<String, double[]> stats = new HashMap<>();     // tag -> [count, sumCpl]
@@ -128,9 +131,12 @@ public class ReportService {
                 Array arr = rs.getArray("tags");
                 List<String> tags = arr == null ? List.of() : Arrays.asList((String[]) arr.getArray());
                 Double pBest = (Double) rs.getObject("p_best");
-                return new MistakeRow(rs.getString("game_id"), rs.getLong("t"), rs.getInt("ply"), rs.getInt("cpl"),
-                    (Double) rs.getObject("p_played"), tags, pBest, difficulty.level(pBest),
-                    difficulty.harderThanPercent(pBest));
+                Double pPlayed = (Double) rs.getObject("p_played");
+                int cpl = rs.getInt("cpl");
+                boolean candidate = cpl >= mistakeCpl && pPlayed != null && pPlayed >= minP;
+                return new MistakeRow(rs.getString("game_id"), rs.getLong("t"), rs.getInt("ply"), cpl,
+                    pPlayed, tags, pBest, candidate ? difficulty.level(pBest) : null,
+                    candidate ? difficulty.harderThanPercent(pBest) : null);
             }, run);
     }
 }

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 public class AnalysisController {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AnalysisController.class);
     public record AnalyzeRequest(String username, Integer maxGames, Integer depth) {}
     public record WorkersRequest(int count) {}
 
@@ -85,7 +86,8 @@ public class AnalysisController {
             if (n.isEmpty()) return ResponseEntity.notFound().build();
             return ResponseEntity.ok(Map.of("rescored", n.getAsInt()));
         } catch (org.springframework.web.client.RestClientException e) {
-            return ResponseEntity.status(503).body(Map.of("error", "model service unavailable: " + e.getMessage()));
+            log.warn("rescore of {} failed: model service unavailable", username, e);
+            return ResponseEntity.status(503).body(Map.of("error", "model service unavailable"));
         }
     }
 

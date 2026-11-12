@@ -30,7 +30,8 @@ public final class Difficulty {
         // With no candidates, level() reports "unrated" for everything, but the SQL cutoffs (+inf / -inf) would
         // classify a non-null p_best as tricky. That only affects non-candidates, which the report never counts.
         if (n == 0) return new Difficulty(c, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY);
-        if (n < 3) return new Difficulty(c, c[0], c[0]);
+        // Too few to split into thirds: every rated candidate is "tricky".
+        if (n < 3) return new Difficulty(c, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY);
         return new Difficulty(c, c[(2 * n) / 3], c[n / 3]);
     }
 
@@ -67,7 +68,7 @@ public final class Difficulty {
         if (csv == null) return DEFAULT;
         List<String> out = new ArrayList<>();
         for (String raw : csv.split(",")) {
-            String s = raw.trim().toLowerCase();
+            String s = raw.trim().toLowerCase(java.util.Locale.ROOT);
             if (s.isEmpty()) continue;
             if (!ALL.contains(s)) throw new IllegalArgumentException("unknown level: " + s);
             if (!out.contains(s)) out.add(s);

@@ -129,12 +129,47 @@ class ReportServiceIT extends PostgresIT {
     void mistakeRowsCarryLevel() {
         UUID run = UUID.randomUUID();
         seed(run, "DONE");
+        move(run, 0, 20, 0.5, "{}", 0.7);                 // not a mistake
+        move(run, 1, 500, 0.01, "{missed_tactic}", 0.01); // mistake but unlikely human move
         move(run, 2, 300, 0.4, "{hanging_piece}", 0.05);
         move(run, 4, 300, 0.4, "{hanging_piece}", 0.3);
         move(run, 6, 300, 0.4, "{hanging_piece}", 0.9);
-        var row = reports.mistakes("alice").get(0);
+        var rows = reports.mistakes("alice");
+        assertNull(rows.get(0).level());
+        assertNull(rows.get(0).harderThanPercent());
+        assertNull(rows.get(1).level());
+        assertNull(rows.get(1).harderThanPercent());
+        var row = rows.get(2);
         assertEquals("deep", row.level());
         assertEquals(0.05, row.pBest(), 1e-9);
         assertEquals(67, row.harderThanPercent());
+    }
+
+    @Test
+    void unratedRunStillReturnsPatternsByDefault() {
+        UUID run = UUID.randomUUID();
+        seed(run, "DONE");
+        move(run, 2, 300, 0.4, "{hanging_piece}", null);
+        move(run, 4, 200, 0.3, "{missed_tactic}", null);
+        var r = reports.report("alice").orElseThrow();
+        assertEquals(List.of("tricky", "deep"), r.levels());
+        assertEquals(2, r.patterns().size());
+        assertTrue(r.patterns().stream().flatMap(p -> p.examples().stream()).allMatch(e -> e.level().equals("unrated")));
+        assertEquals(2, r.levelCounts().get("unrated"));
+    }
+
+    @Test
+    void tinyRunsShowAsTrickyByDefault() {
+        for (int n = 1; n <= 2; n++) {
+            UUID run = UUID.randomUUID();
+            jdbc.update("delete from move_analysis"); jdbc.update("delete from move");
+            seed(run, "DONE");
+            for (int i = 0; i < n; i++) move(run, 2 * (i + 1), 300, 0.4, "{hanging_piece}", 0.1 + 0.5 * i);
+            var r = reports.report("alice", Difficulty.DEFAULT).orElseThrow();
+            assertEquals(1, r.patterns().size(), "n=" + n);
+            assertEquals(n, r.patterns().get(0).count(), "n=" + n);
+            assertTrue(r.patterns().get(0).examples().stream().allMatch(e -> e.level().equals("tricky")));
+            assertEquals(n, r.levelCounts().get("tricky"));
+        }
     }
 }

@@ -6,6 +6,7 @@ Usage (repo root, backend running, latest run rescored so p_best is filled in):
 import argparse
 import json
 import os
+import urllib.parse
 from collections import Counter, defaultdict
 
 import requests
@@ -20,7 +21,7 @@ def summarize(rows: list[dict], mistake_cpl: int, min_p_played: float = 0.15) ->
     total = len(mistakes)
     out = {"mistakes": total, "mistake_cpl": mistake_cpl, "min_p_played": min_p_played, "levels": {}}
     for level in LEVELS:
-        sel = [r for r in mistakes if r["level"] == level]
+        sel = [r for r in mistakes if (r.get("level") or "unrated") == level]
         tags = Counter(t for r in sel for t in (r["tags"] or ["untagged"]))
         out["levels"][level] = {
             "count": len(sel),
@@ -38,10 +39,12 @@ def main() -> None:
     ap.add_argument("--min-p-played", type=float, default=0.15)
     ap.add_argument("--out", default=os.path.join("results", "difficulty_levels.json"))
     args = ap.parse_args()
-    rows = requests.get(f"{BASE}/players/{args.username}/mistakes", timeout=60).json()
+    rows = requests.get(f"{BASE}/players/{urllib.parse.quote(args.username, safe='')}/mistakes", timeout=60).json()
     result = {"username": args.username, **summarize(rows, args.mistake_cpl, args.min_p_played)}
     with open(args.out, "w") as f:
         json.dump(result, f, indent=2)
+        f.write("
+")
     for level in LEVELS:
         s = result["levels"][level]
         print(f"{level:8s} {s['count']:5d}  {s['share']:6.1%}  avg cpl {s['avg_cpl']}")

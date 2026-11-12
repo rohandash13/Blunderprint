@@ -43,9 +43,22 @@ class DifficultyTest {
     @Test
     void tinyRunsAreCoarse() {
         Difficulty d = Difficulty.relative(java.util.Arrays.asList(0.2, 0.4, null));
-        assertEquals("slip", d.level(0.2));
-        assertEquals("slip", d.level(0.4));
-        assertEquals("deep", d.level(0.1));
+        assertEquals("tricky", d.level(0.2));
+        assertEquals("tricky", d.level(0.4));
+        assertEquals("tricky", d.level(0.1));
+        assertEquals("tricky", Difficulty.relative(List.of(0.3)).level(0.3));
+        assertEquals("unrated", d.level(null));
+    }
+
+    @Test
+    void parsesLevelsIgnoringLocale() {
+        java.util.Locale old = java.util.Locale.getDefault();
+        try {
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("tr"));
+            assertEquals(List.of("tricky"), Difficulty.parse("TRICKY"));
+        } finally {
+            java.util.Locale.setDefault(old);
+        }
     }
 
     @Test
