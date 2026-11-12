@@ -13,14 +13,16 @@ const REPORT: Report = {
   movesAnalyzed: 400,
   mistakes: 30,
   candidates: 12,
+  levels: ["tricky", "deep"],
+  levelCounts: { slip: 4, tricky: 5, deep: 2, unrated: 0 },
   patterns: [
     {
       tag: "hanging_piece",
       count: 5,
       avgCpl: 412.6,
       examples: [
-        { gameId: "g1", ply: 0, fen: START, played: "g1h3", best: "e2e4", cpl: 300, pPlayed: 0.214, pv: ["e2e4", "e7e5", "g1f3"] },
-        { gameId: "g2", ply: 1, fen: AFTER_E4, played: "g8h6", best: "e7e5", cpl: 250, pPlayed: 0.18, pv: [] },
+        { gameId: "g1", ply: 0, fen: START, played: "g1h3", best: "e2e4", cpl: 300, pPlayed: 0.214, pv: ["e2e4", "e7e5", "g1f3"], pBest: 0.3, level: "tricky" },
+        { gameId: "g2", ply: 1, fen: AFTER_E4, played: "g8h6", best: "e7e5", cpl: 250, pPlayed: 0.18, pv: [], pBest: 0.05, level: "deep" },
       ],
     },
     { tag: "other", count: 2, avgCpl: 100, examples: [] },
