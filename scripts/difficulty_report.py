@@ -43,8 +43,7 @@ def main() -> None:
     result = {"username": args.username, **summarize(rows, args.mistake_cpl, args.min_p_played)}
     with open(args.out, "w") as f:
         json.dump(result, f, indent=2)
-        f.write("
-")
+        f.write("\n")
     for level in LEVELS:
         s = result["levels"][level]
         print(f"{level:8s} {s['count']:5d}  {s['share']:6.1%}  avg cpl {s['avg_cpl']}")
