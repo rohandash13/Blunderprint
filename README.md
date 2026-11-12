@@ -58,7 +58,7 @@ Every number below is produced by a script in this repo; the output files are in
 | Move prediction, top-1 on 50K held-out positions (player-disjoint split, 500K training positions) | **27.1%** MLP vs 21.1% linear vs 6.9% uniform | `cd ml && python -m blunderprint_ml.evaluate` → `results/model_eval.json` |
 | Analysis throughput, 30 games at depth 12 | **44 → 120 positions/sec** from 1 to 8 workers | `python scripts/loadtest.py` → `results/loadtest_batched.json` |
 | Batched DB writes | database share of worker time **26% → 9%** | `results/loadtest_timing.json` vs `results/loadtest_batched.json` |
-| Difficulty levels on a 2500-rated blitz player's 71 repeatable mistakes | hardest third averages **314 cp** lost vs 159 cp (middle) and 243 cp (easiest) | `python scripts/difficulty_report.py --username Knight_ofthelight73` → `results/difficulty_levels.json` |
+| Difficulty levels on a 2500-rated blitz player's 71 repeatable mistakes | hardest third averages **314 cp** lost vs 159 cp (middle) and 243 cp (easiest) | `curl -X POST localhost:8080/admin/players/Knight_ofthelight73/rescore`, then `python scripts/difficulty_report.py --username Knight_ofthelight73` → `results/difficulty_levels.json` |
 
 ## Running locally
 

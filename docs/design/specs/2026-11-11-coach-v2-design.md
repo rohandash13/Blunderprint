@@ -40,8 +40,8 @@ few players at that rating find the move.
 
 **Levels** (relative to the player). Let `C` be the non-null `p_best` values of the run's candidate mistakes
 (`cpl >= report.mistake-cpl` and `p_played >= report.min-p-played`), sorted ascending, `n = |C|`. Cutoffs are
-the tertiles of `C`: `deepMax = C[floor(n/3)]`, `slipMin = C[floor(2n/3)]` (for `n < 3`, both equal `C[0]`;
-for `n = 0` every level is `unrated`).
+the tertiles of `C`: `deepMax = C[floor(n/3)]`, `slipMin = C[floor(2n/3)]` (for `0 < n < 3` there is nothing to split, so every rated candidate is `tricky`;
+for `n = 0` every level is `unrated`, and the report then also lists unrated rows so patterns are not empty).
 
 | Level  | Rule                         | Meaning                                       |
 |--------|------------------------------|-----------------------------------------------|
@@ -67,9 +67,11 @@ for an arbitrary move per board; `p_played_batch` becomes a thin wrapper).
 - Flyway `V2__p_best.sql`: `alter table move_analysis add column p_best double precision;`
 - `ModelClient.MoveOut` gains `@JsonProperty("p_best") Double pBest`; `AnalysisService` writes it alongside
   `p_played`.
-- **Backfill:** `POST /admin/backfill-p-best?username=` rescores moves in the user's latest DONE run where
-  `p_best is null and best_uci is not null`, in batches through the existing `ModelClient`. Returns
-  `{updated}`. Idempotent.
+- **Backfill:** `POST /admin/players/{username}/rescore` rescores the whole latest DONE run through the
+  existing `ModelClient` and returns `{rescored}`. Idempotent. `/admin/**` is unauthenticated and must not be
+  exposed publicly (deployment will gate it).
+- `GET /players/{u}/mistakes` rows carry `level` / `harderThanPercent` only for candidate mistakes
+  (`cpl >= mistake-cpl` and `p_played >= min-p-played`); both are `null` otherwise.
 - `Difficulty` value class maps `p_best` → level using per-run tertile cutoffs (single source of truth for the
   backend; the frontend receives the level string, never recomputes it).
 
@@ -107,8 +109,10 @@ Applies to `play_move` (every verdict except illegal) and `try_move`.
 **Flow.**
 1. Flash the player's move red (existing `flashMove`), then leave it played.
 2. If the move gives mate, stop: eval = mate.
-3. Otherwise `fx.analyze(fenAfter)`; take the engine `pv`, cap at `PLAYOUT_PLIES = 10`, drop any illegal
-   tail (existing `afterMove` null check).
+3. Otherwise `fx.analyze(fenAfter)`; take the engine `pv`, cap at `PLAYOUT_PLIES = 9`, drop any illegal
+   tail (existing `afterMove` null check). The line must end with the drill side to move: after the player's
+   move it runs opponent, player, ... so the ply count is odd; if truncation leaves it even, the last ply
+   is dropped. "You" is always the side to move in the drill start position.
 4. Animate the line ply by ply with arrows: opponent moves in `REPLY` (blue), player-side moves in `BEST`
    (green). 900 ms per ply as today.
 5. Result includes `line` facts (`lineFacts` over the played pv: spoken move, capture, check, fork per ply),
@@ -123,7 +127,10 @@ Applies to `play_move` (every verdict except illegal) and `try_move`.
 **Hint integrity.** For a wrong attempt the played line starts with the opponent's refutation, so it never
 contains the drill's best move from the start position. If the engine's pv after a wrong move happens to
 contain the same from→to as the drill answer *at the start FEN*, that is irrelevant (different position).
-No change to hint/reveal rules.
+No change to hint/reveal rules. In addition, while the drill is neither solved nor revealed, a wrong
+`play_move` and any `try_move` cut the engine line before the first player-side ply that plays the drill's
+best move, so a wrong attempt never shows the answer. `try_move` from a position where the opponent is to
+move returns an error instead of playing.
 
 **After playout.** Board stays on the final position. `d.exploreFen` = final FEN for `try_move`; for
 `play_move` wrong attempts the next attempt resets to the drill start automatically (attempts are always
@@ -158,18 +165,18 @@ Add `"hint"`, `"reveal"`, `"reset"` to `KEYTERMS` to improve recognition at the 
 
 ## 5. Errors & testing
 
-**Errors.** Backfill with model service down → 503 `{error}`, partial progress kept (per-batch commits).
+**Errors.** Rescore with the model service down → 503 `{"error":"model service unavailable"}` (fixed text, exception logged).
 `levels` param invalid → 400. Missing `p_best` → `unrated`, excluded by default. Report for a run with no
 `p_best` at all → `levelCounts.unrated` = all mistakes, coach told "difficulty not computed yet".
 
 **Tests.**
 - Python: `p_moves_batch` matches `p_played_batch` for the played move; `/analyze` returns `p_best` and null
   when `best_uci` absent.
-- Backend (Testcontainers): V2 migration applies; `Difficulty` boundaries (0.15, 0.50 inclusive rules);
-  report `levels` filtering, `levelCounts`, example sort, 400 on bad level; backfill updates only null rows
-  and is idempotent.
+- Backend (Testcontainers): V2 migration applies; `Difficulty` tertile cutoffs (`n < 3` → all tricky, `n = 0` → unrated rows shown);
+  report `levels` filtering, `levelCounts`, example sort, 400 on bad level; rescore is idempotent; mistakes
+  rows are null-level for non-candidates.
 - Frontend (Vitest): `describeEval` bands and signs; playout result shape for wrong/best/try_move, cap at
-  10 plies, illegal-tail truncation, engine-down path; `LineHistory` stepping and replacement; `set_levels`
+  9 plies ending with the player to move, illegal-tail truncation, wrong-attempt line cut before the answer, engine-down path; `LineHistory` stepping and replacement; `set_levels`
   and `step_line`; `cleanUserLine` (empty → null, "Drove me." → "drill me", long sentence untouched, move →
   SAN).
 - Manual: live voice retest with `Knight_ofthelight73` — default drill is tricky/deep, wrong attempt plays
