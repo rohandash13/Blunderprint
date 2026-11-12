@@ -51,8 +51,9 @@ for `n = 0` every level is `unrated`, and the report then also lists unrated row
 
 Why relative: candidates are pre-selected for high `p_played`, which squeezes `p_best` toward 0, and the MLP
 cannot calculate, so tactical best moves get tiny probabilities. On real data (a 2500-rated player, 71
-candidates) fixed cutoffs put 80% of mistakes in "deep". The *ranking* by `p_best` is informative; the
-absolute value is not, so no level claims a population find rate.
+candidates) fixed cutoffs put 80% of mistakes in "deep". Levels use only the *ordering* of `p_best`
+within the player's own mistakes (the absolute value is compressed, and the ordering is not validated as a
+find rate), so no level claims a population find rate.
 
 Each example also carries `harderThanPercent = round(100 * #{c in C : c > p_best} / n)` (null when `p_best`
 is null or `n = 0`).
@@ -124,13 +125,13 @@ Applies to `play_move` (every verdict except illegal) and `try_move`.
    - Sign phrased for the player: positive → "You have …", negative → "Your opponent has …"; equal band
      has no side.
 
-**Hint integrity.** For a wrong attempt the played line starts with the opponent's refutation, so it never
-contains the drill's best move from the start position. If the engine's pv after a wrong move happens to
-contain the same from→to as the drill answer *at the start FEN*, that is irrelevant (different position).
-No change to hint/reveal rules. In addition, while the drill is neither solved nor revealed, a wrong
-`play_move` and any `try_move` cut the engine line before the first player-side ply that plays the drill's
-best move, so a wrong attempt never shows the answer. `try_move` from a position where the opponent is to
-move returns an error instead of playing.
+**Hint integrity.** Until the drill is solved or revealed, the engine line shown after a wrong `play_move` or any
+`try_move` is cut before the first player-side ply whose from→to matches the drill answer, so a wrong attempt
+never shows the answer. A `best` verdict is never cut. No change to hint/reveal rules.
+
+**Stepping and exploring.** Stepping (◀ ▶, keys, `step_line`) always moves `exploreFen` to the stepped frame.
+`try_move` refuses when it is the opponent's move there, when the game is over, or when the last playout had no
+engine reply (each with its own message); "reset" returns to the drill position.
 
 **After playout.** Board stays on the final position. `d.exploreFen` = final FEN for `try_move`; for
 `play_move` wrong attempts the next attempt resets to the drill start automatically (attempts are always
@@ -166,7 +167,7 @@ Add `"hint"`, `"reveal"`, `"reset"` to `KEYTERMS` to improve recognition at the 
 ## 5. Errors & testing
 
 **Errors.** Rescore with the model service down → 503 `{"error":"model service unavailable"}` (fixed text, exception logged).
-`levels` param invalid → 400. Missing `p_best` → `unrated`, excluded by default. Report for a run with no
+`levels` param invalid → 400. Missing `p_best` → `unrated`, excluded by default (exception: when no candidate in the run has a `p_best`, unrated rows are shown so the report is not empty). Report for a run with no
 `p_best` at all → `levelCounts.unrated` = all mistakes, coach told "difficulty not computed yet".
 
 **Tests.**

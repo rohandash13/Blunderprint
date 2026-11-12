@@ -1,4 +1,5 @@
 import { describeMove, lineFacts, material, spokenMove, type MoveFacts } from "../chess/facts";
+import { Chess } from "chess.js";
 import { parseMove } from "../chess/moveParse";
 import { judge, sameMove, uciOf } from "../chess/verdict";
 import { describeEval } from "../chess/evalText";
@@ -116,6 +117,8 @@ export interface Drill {
   solved: boolean;
   revealed: boolean;
   exploreFen: string;
+  /** The last playout ended with the opponent to move because no engine line was available. */
+  awaitingReply?: boolean;
 }
 
 export interface CoachState {
@@ -187,6 +190,7 @@ function factsOut(f: MoveFacts | null) {
 const forYou = (diff: number, side: "White" | "Black") => (side === "White" ? diff : -diff);
 
 const sideToMove = (fen: string): "White" | "Black" => (fen.split(" ")[1] === "w" ? "White" : "Black");
+const isGameOver = (fen: string) => { try { return new Chess(fen).isGameOver(); } catch { return false; } };
 const isOpen = (d: Drill) => !d.solved && !d.revealed;
 
 /**
@@ -323,7 +327,8 @@ async function playMove(args: Record<string, unknown>, state: CoachState, fx: Co
   const mine = describeMove(ex.fen, j.uci!);
   const facts = factsOut(mine);
   const spoken = mine?.spoken ?? j.uci!;
-  const { finalFen, ...play } = mine ? await playOut(mine, sideToMove(ex.fen), fx, isOpen(d) ? ex.best : null) : { finalFen: ex.fen, engineLine: null, evalForYou: null, evalSpoken: null, materialForYou: 0 };
+  const { finalFen, ...play } = mine ? await playOut(mine, sideToMove(ex.fen), fx, isOpen(d) && j.verdict !== "best" ? ex.best : null) : { finalFen: ex.fen, engineLine: null, evalForYou: null, evalSpoken: null, materialForYou: 0 };
+  d.awaitingReply = sideToMove(finalFen) !== sideToMove(ex.fen);
   if (j.verdict === "best") {
     d.solved = true;
     d.exploreFen = finalFen;
@@ -393,7 +398,9 @@ async function tryMove(args: Record<string, unknown>, state: CoachState, fx: Coa
   if (!d) return NO_DRILL;
   const input = String(args.move ?? "");
   const you = sideToMove(d.example.fen);
+  if (isGameOver(d.exploreFen)) return { error: "The game is over in this position. Say reset to go back to the drill." };
   if (sideToMove(d.exploreFen) !== you) {
+    if (d.awaitingReply) return { error: "No engine reply is available here. Say reset to go back to the drill." };
     return { error: "It's the opponent's move in this position. Step forward, or reset to the drill." };
   }
   const parsed = parseMove(d.exploreFen, input);
@@ -402,6 +409,7 @@ async function tryMove(args: Record<string, unknown>, state: CoachState, fx: Coa
   await fx.flashMove(d.exploreFen, mine.uci);
   const { finalFen, ...play } = await playOut(mine, you, fx, isOpen(d) ? d.example.best : null);
   d.exploreFen = finalFen;
+  d.awaitingReply = sideToMove(finalFen) !== you;
   return { yourMove: mine.spoken, ...play };
 }
 
@@ -409,6 +417,7 @@ function resetPosition(state: CoachState, fx: CoachEffects) {
   const d = state.drill;
   if (!d) return NO_DRILL;
   d.exploreFen = d.example.fen;
+  d.awaitingReply = false;
   fx.showPosition(d.example.fen);
   return { status: "Back to the drill position" };
 }
@@ -433,6 +442,9 @@ function stepLine(args: Record<string, unknown>, state: CoachState, fx: CoachEff
   if (!["back", "forward", "start", "end"].includes(dir)) return { error: "direction must be back, forward, start or end" };
   const r = fx.step(dir as StepDirection);
   if (!r) return { error: "Nothing to step to. Say so." };
-  if (state.drill && sideToMove(r.fen) === sideToMove(state.drill.example.fen)) state.drill.exploreFen = r.fen;
+  if (state.drill) {
+    state.drill.exploreFen = r.fen; // try_move refuses when the opponent is to move there
+    state.drill.awaitingReply = false;
+  }
   return { ply: r.ply, total: r.total };
 }

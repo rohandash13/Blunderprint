@@ -82,8 +82,9 @@ export default function App() {
 
   const effects: CoachEffects = {
     fetchReport: async (lv) => {
+      const req = ++reportReq.current;
       const r = await fetchReport(username, lv);
-      setReport(r);
+      if (req === reportReq.current) setReport(r);
       return r;
     },
     // Setting a static position (reset, drill, show) cancels any running animation.
@@ -167,7 +168,10 @@ export default function App() {
   function stepUi(dir: StepDirection) {
     const r = effects.step(dir);
     const d = coach.current.drill;
-    if (r && d && r.fen.split(" ")[1] === d.example.fen.split(" ")[1]) d.exploreFen = r.fen; // only where the drill side is to move
+    if (r && d) {
+      d.exploreFen = r.fen; // try_move refuses when the opponent is to move there
+      d.awaitingReply = false;
+    }
   }
 
   useEffect(() => {

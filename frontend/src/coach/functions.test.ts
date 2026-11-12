@@ -310,7 +310,7 @@ describe("try_move and reset_position", () => {
     expect(r.note).toMatch(/No engine line/);
     expect(s.drill!.exploreFen).toBe(AFTER_E4_CJS);
     const wrongSide = await call("try_move", { move: "e5" }, s, e.fx); // engine was down, so it is Black's turn
-    expect(wrongSide.error).toMatch(/opponent's move/);
+    expect(wrongSide.error).toMatch(/No engine reply/);
     s.drill!.exploreFen = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
     const bad = await call("try_move", { move: "e5" }, s, e.fx); // white has no e5 move now
     expect(bad.verdict).toBe("illegal");
@@ -488,13 +488,13 @@ describe("playout ends with the player to move", () => {
     expect(s.drill!.exploreFen).toBe(AFTER_E4);
   });
 
-  it("step_line to an opponent-to-move frame leaves exploreFen alone", async () => {
+  it("step_line to an opponent-to-move frame follows it (try_move refuses there)", async () => {
     const s = newCoachState();
     const { fx } = effects();
     fx.step = () => ({ fen: AFTER_E4, ply: 1, total: 3 });
     await call("start_drill", { tag: "hanging_piece" }, s, fx);
     expect(await call("step_line", { direction: "back" }, s, fx)).toEqual({ ply: 1, total: 3 });
-    expect(s.drill!.exploreFen).toBe(START);
+    expect(s.drill!.exploreFen).toBe(AFTER_E4);
   });
 });
 
@@ -528,5 +528,47 @@ describe("wrong attempts do not reveal the answer", () => {
     await call("reveal_answer", {}, s2, e2.fx);
     await call("try_move", { move: "d4" }, s2, e2.fx);
     expect(e2.of("animateLine")[0].args[1]).toEqual(["d7d5", "e2e4", "d5e4"]);
+  });
+});
+
+describe("review follow-ups", () => {
+  it("stepping always moves exploreFen; try_move then refuses on the opponent's turn without flashing", async () => {
+    const s = newCoachState();
+    const { fx, of } = effects();
+    fx.step = () => ({ fen: AFTER_E4, ply: 1, total: 3 });
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    await call("step_line", { direction: "back" }, s, fx);
+    expect(s.drill!.exploreFen).toBe(AFTER_E4);
+    const r = await call("try_move", { move: "e5" }, s, fx);
+    expect(r.error).toMatch(/opponent's move/);
+    expect(of("flashMove")).toHaveLength(0);
+  });
+
+  it("a best verdict is not cut even if the answer repeats later in the pv", async () => {
+    const s = newCoachState();
+    const { fx, of } = effects(REPORT, { bestUci: "g8f6", scoreCp: 0, pv: ["g8f6", "f3g1", "f6g8", "g1f3", "b8c6"] });
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    s.drill!.example = { ...s.drill!.example, best: "g1f3" };
+    const r = await call("play_move", { move: "Nf3" }, s, fx);
+    expect(r.verdict).toBe("best");
+    expect(of("animateLine")[0].args[1]).toEqual(["g8f6", "f3g1", "f6g8", "g1f3", "b8c6"]);
+  });
+
+  it("try_move reports a finished game", async () => {
+    const s = newCoachState();
+    const { fx } = effects(REPORT, null);
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    s.drill!.exploreFen = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"; // stalemate, Black to move
+    expect((await call("try_move", { move: "e5" }, s, fx)).error).toBe("The game is over in this position. Say reset to go back to the drill.");
+  });
+
+  it("no engine reply message after an engine-down playout", async () => {
+    const s = newCoachState();
+    const { fx } = effects(REPORT, null);
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    await call("try_move", { move: "e4" }, s, fx);
+    expect((await call("try_move", { move: "e5" }, s, fx)).error).toBe("No engine reply is available here. Say reset to go back to the drill.");
+    await call("reset_position", {}, s, fx);
+    expect((await call("try_move", { move: "e4" }, s, fx)).error).toBeUndefined();
   });
 });
