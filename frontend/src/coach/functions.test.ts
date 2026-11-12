@@ -242,6 +242,17 @@ describe("explain_line", () => {
     expect(e.of("animateLine").at(-1)).toEqual({ fn: "animateLine", args: [AFTER_E4, ["e7e5"], BEST] });
   });
 
+  it("returns an error instead of empty facts when no line is available", async () => {
+    const s = newCoachState();
+    const e = effects(REPORT, null); // analyze returns null (engine down)
+    await call("start_drill", { tag: "hanging_piece" }, s, e.fx);
+    await call("play_move", { move: "e4" }, s, e.fx);
+    await call("start_drill", { tag: "hanging_piece" }, s, e.fx); // second example, pv []
+    const r = (await call("explain_line", {}, s, e.fx)) as Record<string, unknown>;
+    expect(String(r.error)).toContain("No engine line");
+    expect(e.of("animateLine")).toEqual([]);
+  });
+
   it("works on a shown example without a drill; errors with neither", async () => {
     const s = newCoachState();
     const e = effects();

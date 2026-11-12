@@ -257,7 +257,10 @@ function getHint(state: CoachState, fx: CoachEffects) {
   if (d.hintsGiven >= 3) return { hint: null, message: "No hints left. Offer to reveal the answer." };
   const hint = hintLadder(d.example.fen, d.example.best)[d.hintsGiven];
   d.hintsGiven += 1;
-  if (d.hintsGiven === 3) fx.showPosition(d.example.fen, [arrow(d.example.best, BEST)]);
+  if (d.hintsGiven === 3) {
+    d.exploreFen = d.example.fen;
+    fx.showPosition(d.example.fen, [arrow(d.example.best, BEST)]);
+  }
   return { hint, level: d.hintsGiven, hintsRemaining: 3 - d.hintsGiven };
 }
 
@@ -283,7 +286,10 @@ async function explainLine(args: Record<string, unknown>, state: CoachState, fx:
   const plies = Number.isInteger(n) && n > 0 ? n : 6;
   const full = ex.pv.length > 0 ? ex.pv : ((await fx.analyze(ex.fen))?.pv ?? []);
   const line = lineFacts(ex.fen, full, plies);
-  if (line.length > 0) await fx.animateLine(ex.fen, full.slice(0, plies), BEST);
+  if (line.length === 0) {
+    return { error: "No engine line is available for this position. Say so; do not explain from memory." };
+  }
+  await fx.animateLine(ex.fen, line.map((f) => f.uci), BEST);
   const before = material(ex.fen).diff;
   return {
     line: line.map((f, i) => ({
@@ -295,7 +301,7 @@ async function explainLine(args: Record<string, unknown>, state: CoachState, fx:
       fork: f.fork,
     })),
     materialBefore: before,
-    materialAfter: line.length > 0 ? line[line.length - 1].materialAfter : before,
+    materialAfter: line[line.length - 1].materialAfter,
     note: "Explain using only these facts.",
   };
 }
