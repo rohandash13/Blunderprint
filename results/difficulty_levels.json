@@ -1,0 +1,52 @@
+{
+  "username": "Knight_ofthelight73",
+  "mistakes": 71,
+  "mistake_cpl": 100,
+  "min_p_played": 0.15,
+  "levels": {
+    "slip": {
+      "count": 24,
+      "share": 0.338,
+      "avg_cpl": 243.1,
+      "by_tag": {
+        "other": 10,
+        "endgame_technique": 7,
+        "hanging_piece": 5,
+        "time_trouble": 3,
+        "missed_tactic": 2,
+        "opening_error": 1
+      }
+    },
+    "tricky": {
+      "count": 24,
+      "share": 0.338,
+      "avg_cpl": 159.2,
+      "by_tag": {
+        "other": 12,
+        "endgame_technique": 7,
+        "time_trouble": 3,
+        "opening_error": 2,
+        "hanging_piece": 2,
+        "missed_tactic": 1
+      }
+    },
+    "deep": {
+      "count": 23,
+      "share": 0.3239,
+      "avg_cpl": 314.0,
+      "by_tag": {
+        "time_trouble": 8,
+        "hanging_piece": 7,
+        "other": 7,
+        "endgame_technique": 5,
+        "missed_tactic": 4
+      }
+    },
+    "unrated": {
+      "count": 0,
+      "share": 0.0,
+      "avg_cpl": null,
+      "by_tag": {}
+    }
+  }
+}

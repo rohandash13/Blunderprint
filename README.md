@@ -39,6 +39,15 @@ on their own positions.
   `get_hint`, `explain_line`, `try_move`, ...) compute verdicts, hints and engine lines in code and hand the
   agent facts to narrate. Hints follow a ladder (idea → piece → square); the answer is revealed only when the
   player asks.
+- **Difficulty levels.** Each mistake gets `p_best`: the model's probability that a player at that rating plays
+  the engine's move. The model's absolute probabilities are too low to read directly (it can't calculate tactics,
+  and the mistakes it flags are by construction ones where it expected the player's move), but its *ranking* holds
+  up, so levels are thirds of the player's own repeatable mistakes: slips (easiest third), tricky, deep (hardest
+  third). The coach defaults to tricky + deep, sorts examples by centipawn loss × (1 − `p_best`), and says "harder
+  than 80% of your mistakes" rather than a made-up find rate.
+- **Line playout.** Every move the player suggests plays on the board, followed by up to 10 plies of the engine's
+  best line (blue for the opponent, green for the player) and a plain-language eval ("Your opponent has a clear
+  edge, about 2 pawns"). ◀ ▶ and the arrow keys step through it; so does saying "go back".
 
 ## Results
 
@@ -49,6 +58,7 @@ Every number below is produced by a script in this repo; the output files are in
 | Move prediction, top-1 on 50K held-out positions (player-disjoint split, 500K training positions) | **27.1%** MLP vs 21.1% linear vs 6.9% uniform | `cd ml && python -m blunderprint_ml.evaluate` → `results/model_eval.json` |
 | Analysis throughput, 30 games at depth 12 | **44 → 120 positions/sec** from 1 to 8 workers | `python scripts/loadtest.py` → `results/loadtest_batched.json` |
 | Batched DB writes | database share of worker time **26% → 9%** | `results/loadtest_timing.json` vs `results/loadtest_batched.json` |
+| Difficulty levels on a 2500-rated blitz player's 71 repeatable mistakes | hardest third averages **314 cp** lost vs 159 cp (middle) and 243 cp (easiest) | `python scripts/difficulty_report.py --username Knight_ofthelight73` → `results/difficulty_levels.json` |
 
 ## Running locally
 
