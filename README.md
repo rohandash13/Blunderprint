@@ -35,17 +35,17 @@ on their own positions.
   predicts what a player at a given rating would play. A mistake the model rates as *likely* for the player's
   rating is a habit worth drilling, not a one-off.
 - **Voice coach (React + Deepgram).** The browser talks to Deepgram's Voice Agent API directly with a short-lived
-  token minted by the backend. The LLM never judges chess: nine client-side functions (`play_move`,
+  token minted by the backend. The LLM never judges chess: eleven client-side functions (`play_move`,
   `get_hint`, `explain_line`, `try_move`, ...) compute verdicts, hints and engine lines in code and hand the
   agent facts to narrate. Hints follow a ladder (idea → piece → square); the answer is revealed only when the
   player asks.
 - **Difficulty levels.** Each mistake gets `p_best`: the model's probability that a player at that rating plays
   the engine's move. The model's absolute probabilities are too low to read directly (it can't calculate tactics,
-  and the mistakes it flags are by construction ones where it expected the player's move), but its *ranking* holds
-  up, so levels are thirds of the player's own repeatable mistakes: slips (easiest third), tricky, deep (hardest
+  and the mistakes it flags are by construction ones where it expected the player's move), so levels use only the
+  *ordering* of `p_best` within the player's own repeatable mistakes: thirds of that ordering, slips (easiest third), tricky, deep (hardest
   third). The coach defaults to tricky + deep, sorts examples by centipawn loss × (1 − `p_best`), and says "harder
   than 80% of your mistakes" rather than a made-up find rate.
-- **Line playout.** Every move the player suggests plays on the board, followed by up to 10 plies of the engine's
+- **Line playout.** Every move the player suggests plays on the board, followed by up to 9 plies, ending with you to move, of the engine's
   best line (blue for the opponent, green for the player) and a plain-language eval ("Your opponent has a clear
   edge, about 2 pawns"). ◀ ▶ and the arrow keys step through it; so does saying "go back".
 
