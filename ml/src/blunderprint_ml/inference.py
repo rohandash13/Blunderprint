@@ -15,13 +15,34 @@ def _legal_probs(model, boards: list[chess.Board], ratings: list[int | None]) ->
     return torch.softmax(logits.masked_fill(~mask, float("-inf")), dim=1).numpy()
 
 
-def p_played_batch(model, boards: list[chess.Board], moves: list[chess.Move],
-                   ratings: list[int | None]) -> list[float]:
+def p_moves_batch(model, boards: list[chess.Board], moves: list[chess.Move | None],
+                  ratings: list[int | None]) -> list[float | None]:
+    """Probability of each given move (None stays None), one forward pass for the whole batch."""
     if not boards:
         return []
     probs = _legal_probs(model, boards, ratings)
-    return [float(probs[i, move_index(m, b.turn == chess.BLACK)])
+    return [None if m is None else float(probs[i, move_index(m, b.turn == chess.BLACK)])
             for i, (b, m) in enumerate(zip(boards, moves))]
+
+
+def p_played_and_best_batch(model, boards: list[chess.Board], playeds: list[chess.Move],
+                            bests: list[chess.Move | None],
+                            ratings: list[int | None]) -> list[tuple[float, float | None]]:
+    """(p_played, p_best) per board from a single forward pass."""
+    if not boards:
+        return []
+    probs = _legal_probs(model, boards, ratings)
+    out = []
+    for i, (b, p, best) in enumerate(zip(boards, playeds, bests)):
+        black = b.turn == chess.BLACK
+        out.append((float(probs[i, move_index(p, black)]),
+                    None if best is None else float(probs[i, move_index(best, black)])))
+    return out
+
+
+def p_played_batch(model, boards: list[chess.Board], moves: list[chess.Move],
+                   ratings: list[int | None]) -> list[float]:
+    return p_moves_batch(model, boards, moves, ratings)  # type: ignore[return-value]
 
 
 def legal_distribution(model, fen: str, rating: int | None) -> dict[chess.Move, float]:

@@ -147,3 +147,25 @@ def test_unparseable_best_uci_returns_422_naming_id(client):
     r = client.post("/analyze", json=body)
     assert r.status_code == 422
     assert r.json()["detail"]["id"] == 8
+
+
+from blunderprint_ml.inference import p_moves_batch
+
+
+def test_p_moves_batch_matches_played_and_handles_none():
+    model = _model()
+    boards = [chess.Board(), _after_e4()]
+    moves = [chess.Move.from_uci("e2e4"), None]
+    out = p_moves_batch(model, boards, moves, [1500, 1500])
+    assert out[1] is None
+    assert out[0] == pytest.approx(p_played_batch(model, [boards[0]], [moves[0]], [1500])[0])
+
+
+def test_service_returns_p_best(client):
+    body = {"moves": [{"id": 1, "fen": chess.STARTING_FEN, "rating": 1500, "played_uci": "e2e4",
+                       "best_uci": "e2e4", "cpl": 0, "clock_cs": None},
+                      {"id": 2, "fen": chess.STARTING_FEN, "rating": 1500, "played_uci": "e2e4",
+                       "best_uci": None, "cpl": None, "clock_cs": None}]}
+    out = client.post("/analyze", json=body).json()
+    assert out[0]["p_best"] == pytest.approx(out[0]["p_played"])
+    assert out[1]["p_best"] is None
