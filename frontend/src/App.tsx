@@ -55,11 +55,13 @@ export default function App() {
   const arrowOf = (uci: string, color: string): Arrow => [uci.slice(0, 2), uci.slice(2, 4), color];
 
   const effects: CoachEffects = {
-    fetchReport: async () => {
+    fetchReport: async (_levels) => {
       const r = await fetchReport(username);
       setReport(r);
       return r;
     },
+    setLevels: () => {}, // TODO(Task 8)
+    step: () => null, // TODO(Task 8)
     // Setting a static position (reset, drill, show) cancels any running animation.
     showPosition: (f, a) => {
       queue.current.cancel();
@@ -68,13 +70,13 @@ export default function App() {
       setFlash([]);
       setVerdict(null);
     },
-    animateLine: (f, ucis, color) =>
+    animateLine: (f, ucis, colors) =>
       queue.current.run(async (ctx) => {
         let cur = f;
         setFen(cur);
         setFlash([]);
-        for (const u of ucis) {
-          setArrows([arrowOf(u, color)]);
+        for (const [i, u] of ucis.entries()) {
+          setArrows([arrowOf(u, Array.isArray(colors) ? colors[i] : colors)]);
           await ctx.sleep(450);
           if (ctx.cancelled()) return;
           const next = afterMove(cur, u);

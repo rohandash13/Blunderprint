@@ -1,8 +1,10 @@
 import { describeMove, lineFacts, material, spokenMove, type MoveFacts } from "../chess/facts";
 import { parseMove } from "../chess/moveParse";
 import { judge, uciOf } from "../chess/verdict";
+import { describeEval } from "../chess/evalText";
 import { hintLadder } from "./hints";
-import type { Example, Report } from "../types";
+import type { StepDirection } from "./lineHistory";
+import type { Example, Level, Report } from "../types";
 
 /** [fromSquare, toSquare, cssColor] */
 export type Arrow = [string, string, string];
@@ -47,7 +49,7 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   },
   {
     name: "play_move",
-    description: "Play the move the player said as an attempt at the current drill. Attempts are unlimited. Returns a verdict (best, repeated_mistake, other, illegal) computed by code; wrong attempts never reveal the answer. Say moves using the returned spoken text only.",
+    description: "Play the move the player said as an attempt at the current drill. The move and the engine's best continuation play out on the board. Returns a verdict (best, repeated_mistake, other, illegal) computed by code, the line as spoken facts, and an eval from the player's side. Wrong attempts never reveal the answer. Attempts are unlimited.",
     parameters: {
       type: "object",
       properties: { move: { type: "string", description: "The move exactly as the player said it, e.g. 'knight f3' or 'Nf3'" } },
@@ -74,7 +76,7 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   },
   {
     name: "try_move",
-    description: "Explore a what-if: play any move from the current exploration position, get the engine reply and an evaluation from the player's side. Use for 'what if I play X?'. Does not count as a drill attempt.",
+    description: "Explore a what-if from the current exploration position: plays the move and the engine's best continuation on the board, returning the line as spoken facts and an eval from the player's side. Does not count as a drill attempt.",
     parameters: {
       type: "object",
       properties: { move: { type: "string", description: "The move as the player said it" } },
@@ -85,6 +87,24 @@ export const FUNCTION_DEFS: FunctionDef[] = [
     name: "reset_position",
     description: "Put the board back to the drill position after exploring. Use when the player wants to start over or try the original position again.",
     parameters: NO_ARGS,
+  },
+  {
+    name: "set_levels",
+    description: "Change which challenge levels the report and drills use: slip (easy moves the player missed), tricky (needs some calculation), deep (moves most players at their rating miss). Use when the player asks for easier or harder positions.",
+    parameters: {
+      type: "object",
+      properties: { levels: { type: "array", items: { type: "string", enum: ["slip", "tricky", "deep"] }, description: "One or more levels" } },
+      required: ["levels"],
+    },
+  },
+  {
+    name: "step_line",
+    description: "Step the board through the last played line. Use when the player says go back, forward, back to the start, or to the end.",
+    parameters: {
+      type: "object",
+      properties: { direction: { type: "string", enum: ["back", "forward", "start", "end"] } },
+      required: ["direction"],
+    },
   },
 ];
 
@@ -104,6 +124,7 @@ export interface CoachState {
   /** Last example put on the board, so explain_line works outside a drill. */
   lastShown: Example | null;
   drilled: Set<string>;
+  levels: Level[];
 }
 
 export interface EngineAnalysis {
@@ -113,17 +134,24 @@ export interface EngineAnalysis {
 }
 
 export interface CoachEffects {
-  fetchReport(): Promise<Report | null>;
+  fetchReport(levels: Level[]): Promise<Report | null>;
   showPosition(fen: string, arrows?: Arrow[]): void;
-  /** Steps the board through the moves, drawing each move's arrow in `color`. */
-  animateLine(fen: string, ucis: string[], color: string): Promise<void>;
+  /** Steps the board through the moves; `colors` is one color for all moves or one per move. */
+  animateLine(fen: string, ucis: string[], colors: string | string[]): Promise<void>;
   /** Red highlight/arrow on the move, then animate it. */
   flashMove(fen: string, uci: string): Promise<void>;
   analyze(fen: string): Promise<EngineAnalysis | null>;
+  /** Reflect a level change in the UI chips. */
+  setLevels(levels: Level[]): void;
+  /** Move through the recorded line; null when there is nothing to step to. */
+  step(dir: StepDirection): { fen: string; ply: number; total: number } | null;
 }
 
+export const PLAYOUT_PLIES = 10;
+const PICKABLE: Level[] = ["slip", "tricky", "deep"];
+
 export function newCoachState(): CoachState {
-  return { report: null, drill: null, lastShown: null, drilled: new Set() };
+  return { report: null, drill: null, lastShown: null, drilled: new Set(), levels: ["tricky", "deep"] };
 }
 
 const PATTERN_INFO: Record<string, { name: string; description: string }> = {
@@ -155,8 +183,35 @@ function factsOut(f: MoveFacts | null) {
   };
 }
 
+const forYou = (diff: number, side: "White" | "Black") => (side === "White" ? diff : -diff);
+
+/** After the player's move (already flashed), play the engine continuation and describe it. */
+async function playOut(mine: MoveFacts, fx: CoachEffects) {
+  const you = mine.side;
+  if (mine.mate) {
+    return { engineLine: [], evalForYou: 10000, evalSpoken: "Checkmate, you win", materialForYou: forYou(mine.materialAfter, you), finalFen: mine.fenAfter };
+  }
+  const a = await fx.analyze(mine.fenAfter);
+  if (!a) {
+    return { engineLine: null, evalForYou: null, evalSpoken: null, materialForYou: forYou(mine.materialAfter, you), finalFen: mine.fenAfter, note: "No engine line available. Do not describe a continuation." };
+  }
+  const line = lineFacts(mine.fenAfter, a.pv.length > 0 ? a.pv : [a.bestUci], PLAYOUT_PLIES);
+  if (line.length > 0) {
+    await fx.animateLine(mine.fenAfter, line.map((f) => f.uci), line.map((f) => (f.side === you ? BEST : REPLY)));
+  }
+  const evalForYou = -a.scoreCp || 0; // scoreCp is from the opponent's side after the player's move
+  const last = line[line.length - 1];
+  return {
+    engineLine: line.map((f, i) => ({ ply: i + 1, side: f.side, spoken: f.spoken, captured: f.captured ?? null, check: f.check, fork: f.fork })),
+    evalForYou,
+    evalSpoken: describeEval(evalForYou),
+    materialForYou: forYou(last ? last.materialAfter : mine.materialAfter, you),
+    finalFen: last ? last.fenAfter : mine.fenAfter,
+  };
+}
+
 async function ensureReport(state: CoachState, fx: CoachEffects): Promise<Report | null> {
-  if (!state.report) state.report = await fx.fetchReport();
+  if (!state.report) state.report = await fx.fetchReport(state.levels);
   return state.report;
 }
 
@@ -173,6 +228,8 @@ export async function handleFunctionCall(
     case "explain_line": return explainLine(args, state, fx);
     case "try_move": return tryMove(args, state, fx);
     case "reset_position": return resetPosition(state, fx);
+    case "set_levels": return setLevels(args, state, fx);
+    case "step_line": return stepLine(args, state, fx);
   }
 
   if (name !== "get_report" && name !== "show_mistake" && name !== "start_drill") {
@@ -187,6 +244,8 @@ export async function handleFunctionCall(
       movesAnalyzed: report.movesAnalyzed,
       mistakes: report.mistakes,
       candidates: report.candidates,
+      levels: state.levels,
+      levelCounts: report.levelCounts,
       patterns: report.patterns.map((p) => ({
         tag: p.tag,
         name: PATTERN_INFO[p.tag]?.name ?? p.tag,
@@ -195,6 +254,7 @@ export async function handleFunctionCall(
         count: p.count,
         avgCpl: Math.round(p.avgCpl),
         examples: p.examples.length,
+        level: p.examples[0]?.level ?? null,
       })),
     };
   }
@@ -217,6 +277,8 @@ export async function handleFunctionCall(
       bestSpoken: spokenMove(ex.fen, ex.best),
       cpl: ex.cpl,
       pPlayed: Math.round(ex.pPlayed * 100) / 100,
+      level: ex.level,
+      findRatePercent: ex.pBest == null ? null : Math.round(ex.pBest * 100),
     };
   }
 
@@ -227,7 +289,13 @@ export async function handleFunctionCall(
   state.lastShown = ex;
   state.drill = { tag, example: ex, attempts: 0, hintsGiven: 0, solved: false, revealed: false, exploreFen: ex.fen };
   fx.showPosition(ex.fen);
-  return { status: `Position ready, ${side(ex.fen)} to move`, side: side(ex.fen), moveNumber: moveNumber(ex.fen) };
+  return {
+    status: `Position ready, ${side(ex.fen)} to move`,
+    side: side(ex.fen),
+    moveNumber: moveNumber(ex.fen),
+    level: ex.level,
+    findRatePercent: ex.pBest == null ? null : Math.round(ex.pBest * 100),
+  };
 }
 
 async function playMove(args: Record<string, unknown>, state: CoachState, fx: CoachEffects) {
@@ -241,14 +309,14 @@ async function playMove(args: Record<string, unknown>, state: CoachState, fx: Co
   const mine = describeMove(ex.fen, j.uci!);
   const facts = factsOut(mine);
   const spoken = mine?.spoken ?? j.uci!;
+  const { finalFen, ...play } = mine ? await playOut(mine, fx) : { finalFen: ex.fen, engineLine: null, evalForYou: null, evalSpoken: null, materialForYou: 0 };
   if (j.verdict === "best") {
     d.solved = true;
-    d.exploreFen = mine?.fenAfter ?? ex.fen;
-    return { verdict: "best", spoken, attempts: d.attempts, facts };
+    d.exploreFen = finalFen;
+    return { verdict: "best", spoken, attempts: d.attempts, facts, ...play };
   }
-  d.exploreFen = ex.fen;
-  fx.showPosition(ex.fen);
-  return { verdict: j.verdict, spoken, attempts: d.attempts, hintsGiven: d.hintsGiven, hintsRemaining: 3 - d.hintsGiven, facts };
+  d.exploreFen = ex.fen; // attempts are always judged from the drill start
+  return { verdict: j.verdict, spoken, attempts: d.attempts, hintsGiven: d.hintsGiven, hintsRemaining: 3 - d.hintsGiven, facts, ...play };
 }
 
 function getHint(state: CoachState, fx: CoachEffects) {
@@ -314,23 +382,9 @@ async function tryMove(args: Record<string, unknown>, state: CoachState, fx: Coa
   const mine = parsed ? describeMove(d.exploreFen, uciOf(parsed)) : null;
   if (!parsed || !mine) return { verdict: "illegal", reason: `No single legal move matches "${input}"` };
   await fx.flashMove(d.exploreFen, mine.uci);
-  d.exploreFen = mine.fenAfter;
-  const analysis = mine.mate ? null : await fx.analyze(mine.fenAfter);
-  let engineReply: string | null = null;
-  if (analysis?.bestUci) {
-    const reply = describeMove(mine.fenAfter, analysis.bestUci);
-    if (reply) {
-      engineReply = reply.spoken;
-      await fx.animateLine(mine.fenAfter, [analysis.bestUci], REPLY);
-      d.exploreFen = reply.fenAfter;
-    }
-  }
-  return {
-    yourMove: mine.spoken,
-    engineReply,
-    evalForYou: analysis ? -analysis.scoreCp || 0 : null,
-    material: material(d.exploreFen).diff,
-  };
+  const { finalFen, ...play } = await playOut(mine, fx);
+  d.exploreFen = finalFen;
+  return { yourMove: mine.spoken, ...play };
 }
 
 function resetPosition(state: CoachState, fx: CoachEffects) {
@@ -339,4 +393,28 @@ function resetPosition(state: CoachState, fx: CoachEffects) {
   d.exploreFen = d.example.fen;
   fx.showPosition(d.example.fen);
   return { status: "Back to the drill position" };
+}
+
+async function setLevels(args: Record<string, unknown>, state: CoachState, fx: CoachEffects) {
+  const raw = Array.isArray(args.levels) ? args.levels.map((l) => String(l).toLowerCase()) : [];
+  const levels = PICKABLE.filter((l) => raw.includes(l));
+  if (levels.length === 0 || levels.length !== new Set(raw).size) {
+    return { error: "levels must be one or more of slip, tricky, deep" };
+  }
+  state.levels = levels;
+  state.report = null;
+  state.drill = null;
+  fx.setLevels(levels);
+  const report = await ensureReport(state, fx);
+  if (!report) return { error: "no report yet" };
+  return { levels, levelCounts: report.levelCounts, patterns: report.patterns.length };
+}
+
+function stepLine(args: Record<string, unknown>, state: CoachState, fx: CoachEffects) {
+  const dir = String(args.direction ?? "");
+  if (!["back", "forward", "start", "end"].includes(dir)) return { error: "direction must be back, forward, start or end" };
+  const r = fx.step(dir as StepDirection);
+  if (!r) return { error: "Nothing to step to. Say so." };
+  if (state.drill) state.drill.exploreFen = r.fen;
+  return { ply: r.ply, total: r.total };
 }
