@@ -86,18 +86,18 @@ export function CoachPanel({ coach, onChoose, onLevels }: Props) {
 
       <div className="transcript-wrap">
         <h3 className="transcript-title">{live ? "Conversation" : "Coach notes"}</h3>
-        {lines.length === 0 ? (
-          <p className="transcript-empty">{live ? "Say hello, or ask what to work on." : "Moves you try, hints and answers appear here. Start voice in the rail to talk instead."}</p>
-        ) : (
-          <ol className="transcript" ref={logRef} aria-live="polite" aria-label="Transcript">
-            {lines.map((l) => (
-              <li key={l.id} className={`line line-${l.role}`}>
-                <span className="line-who">{l.role === "user" ? "You" : "Coach"}</span>
-                <span className="line-text">{l.content}</span>
-              </li>
-            ))}
-          </ol>
-        )}
+        {/* The one live region for coach text: typed-mode notes (captions included) and the voice conversation. */}
+        <ol className="transcript" ref={logRef} aria-live="polite" aria-label="Transcript">
+          {lines.length === 0 && (
+            <li className="transcript-empty">{live ? "Say hello, or ask what to work on." : "Moves you try, hints and answers appear here. Start voice in the rail to talk instead."}</li>
+          )}
+          {lines.map((l) => (
+            <li key={l.id} className={`line line-${l.role}`}>
+              <span className="line-who">{l.role === "user" ? "You" : "Coach"}</span>
+              <span className="line-text">{l.content}</span>
+            </li>
+          ))}
+        </ol>
       </div>
 
       <form className="move-form" onSubmit={submit}>

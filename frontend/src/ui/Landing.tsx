@@ -1,4 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { fetchProfile } from "../api";
+import type { Profile } from "../profile/types";
+import { buildGrid, markSize, PICK_LEVELS } from "./gridLayout";
 
 export const SAMPLE_PLAYER = "Knight_ofthelight73";
 
@@ -16,6 +19,7 @@ export function Landing({ error, initial, onSubmit }: Props) {
   };
   return (
     <section className="landing">
+      <div className="landing-row">
       <div className="panel landing-panel">
         <h1>See how you play, then fix it on your own positions</h1>
         <p className="lede">
@@ -58,6 +62,47 @@ export function Landing({ error, initial, onSubmit }: Props) {
           </button>
         </p>
       </div>
+      <DemoStrip />
+      </div>
     </section>
+  );
+}
+
+const STRIP_ROWS = 5;
+
+/** A read-only glimpse of the sample player's grid, so the product shows itself before the first click. */
+function DemoStrip() {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetchProfile(SAMPLE_PLAYER)
+      .then((p) => live && setProfile(p))
+      .catch(() => undefined); // no strip when the sample isn't available
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!profile || profile.grid.length === 0) return null;
+  const grid = buildGrid(profile, [...PICK_LEVELS]);
+  const rows = grid.rows.filter((r) => r.tag !== "other").slice(0, STRIP_ROWS);
+  if (rows.length === 0) return null;
+  return (
+    <figure className="panel demo-strip">
+      <div className="demo-sheet" aria-hidden="true" style={{ ["--cols" as string]: grid.games.length }}>
+        {rows.map((r) => (
+          <div key={r.tag} className={r.tag === grid.worst ? "demo-row is-worst" : "demo-row"}>
+            <span className="demo-name">{r.name}</span>
+            <span className="demo-cells">
+              {r.cells.map((c) => (
+                <i key={c.col} className={`demo-dot lv-${c.marks[0].level} sz-${markSize(c.marks[0].winDrop)}`} style={{ gridColumn: c.col + 1 }} />
+              ))}
+            </span>
+          </div>
+        ))}
+      </div>
+      <figcaption>
+        {SAMPLE_PLAYER}'s last <span className="num">{grid.games.length}</span> games: patterns down the side, games across, every mistake a mark you can open and replay.
+      </figcaption>
+    </figure>
   );
 }

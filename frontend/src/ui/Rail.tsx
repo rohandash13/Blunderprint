@@ -65,12 +65,12 @@ export function Rail({ flow, onGo, onHome, voice }: Props) {
           {STATUS_TEXT[voice.status]}
         </p>
         {live ? (
-          <button type="button" className="btn btn-rail is-live" aria-pressed="true" onClick={voice.stop}>
+          <button type="button" className="btn btn-rail is-live" onClick={voice.stop}>
             <StopIcon />
             Stop voice
           </button>
         ) : (
-          <button type="button" className="btn btn-rail" aria-pressed="false" onClick={voice.start} disabled={!canVoice || voice.status === "connecting"} title={canVoice ? "Talk to the coach. Headphones help." : "Load a player first"}>
+          <button type="button" className="btn btn-rail" onClick={voice.start} disabled={!canVoice || voice.status === "connecting"} title={canVoice ? "Talk to the coach. Headphones help." : "Load a player first"}>
             <MicIcon />
             {voice.status === "connecting" ? "Connecting…" : voice.status === "error" ? "Reconnect voice" : "Start voice"}
           </button>

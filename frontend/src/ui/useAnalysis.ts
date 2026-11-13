@@ -7,6 +7,8 @@ import { estimateRemaining, type ProgressSample } from "./format";
 const POLL_MS = 2000;
 /** Consecutive failed polls before the screen says the server is not answering. */
 const SOFT_FAIL = 3;
+/** Consecutive failed polls before polling stops and a retry button appears. */
+const HARD_FAIL = 5;
 
 export interface AnalysisView {
   progress: AnalysisProgress | null;
@@ -15,9 +17,13 @@ export interface AnalysisView {
   etaSeconds: number | null;
   /** The server stopped answering polls for a while; polling continues. */
   stalled: boolean;
+  /** Polling gave up after repeated failures; `retry` starts it again. */
+  stopped: boolean;
+  retry(): void;
 }
 
-const EMPTY: AnalysisView = { progress: null, queuePosition: 0, games: null, etaSeconds: null, stalled: false };
+type ViewState = Omit<AnalysisView, "retry">;
+const EMPTY: ViewState = { progress: null, queuePosition: 0, games: null, etaSeconds: null, stalled: false, stopped: false };
 
 export function messageFor(err: unknown): string {
   if (err instanceof ApiError) return err.message; // the server's own words: unknown user, no rated games, daily limit
@@ -26,7 +32,8 @@ export function messageFor(err: unknown): string {
 
 /** Drives the analyzing step: status check, start or reuse a run, then poll progress every two seconds. */
 export function useAnalysis(flow: FlowState, dispatch: Dispatch<FlowAction>): AnalysisView {
-  const [view, setView] = useState<AnalysisView>(EMPTY);
+  const [view, setView] = useState<ViewState>(EMPTY);
+  const [attempt, setAttempt] = useState(0);
   const samples = useRef<ProgressSample[]>([]);
 
   useEffect(() => {
@@ -55,6 +62,7 @@ export function useAnalysis(flow: FlowState, dispatch: Dispatch<FlowAction>): An
           return dispatch({ type: "failed", username: u, message: "That analysis no longer exists. Start it again." });
         }
         misses += 1;
+        if (misses >= HARD_FAIL) return setView((v) => ({ ...v, stalled: false, stopped: true }));
         if (misses >= SOFT_FAIL) setView((v) => ({ ...v, stalled: true }));
       }
       timer = setTimeout(() => void poll(runId), POLL_MS);
@@ -85,7 +93,7 @@ export function useAnalysis(flow: FlowState, dispatch: Dispatch<FlowAction>): An
       stopped = true;
       clearTimeout(timer);
     };
-  }, [flow.step, flow.username, dispatch]);
+  }, [flow.step, flow.username, dispatch, attempt]);
 
-  return view;
+  return { ...view, retry: () => setAttempt((n) => n + 1) };
 }

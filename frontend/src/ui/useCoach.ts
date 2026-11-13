@@ -168,6 +168,8 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     },
     setLevels: (lv) => {
       setLevelsState(lv);
+      coach.current.lastShown = null;
+      setShownTag(null);
       clearBoard();
     },
     step: (dir) => {
@@ -392,6 +394,8 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     coach.current.report = null;
     coach.current.drill = null;
     coach.current.pending = null;
+    coach.current.lastShown = null; // the board goes back to empty, not a stale header over the start position
+    setShownTag(null);
     clearBoard();
     bump();
     await loadReport(ordered);
@@ -432,7 +436,13 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     bump();
   }, [username]);
 
-  useEffect(() => () => stopVoice(), []);
+  useEffect(
+    () => () => {
+      queue.current.cancel();
+      stopVoice();
+    },
+    [],
+  );
 
   const c = coach.current;
   const pendingLeft = c.pending ? c.pending.plies.length - c.pending.next : 0;

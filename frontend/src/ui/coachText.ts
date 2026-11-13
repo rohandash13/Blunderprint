@@ -38,7 +38,8 @@ export function describeResult(name: string, raw: unknown): string | null {
       return sentence(str(r.status));
     case "start_drill":
     case "open_position":
-      return `${sentence(str(r.status))} This one is ${sentence(str(r.difficultyNote))}`;
+      // The difficulty note lives in the coach panel's prompt; saying it here too would repeat it.
+      return sentence(str(r.status));
     case "show_mistake":
       return `In the game you played ${str(r.playedSpoken)} (red). ${cap(str(r.bestSpoken))} was stronger (green).`;
     default:

@@ -65,6 +65,14 @@ export function Analyzing({ username, view, onCancel }: Props) {
             The server isn't answering right now. Still trying every few seconds.
           </p>
         )}
+        {view.stopped && (
+          <div className="stopped" role="alert">
+            <p className="form-error">The server stopped answering, so I paused checking. The analysis may still be running.</p>
+            <button type="button" className="btn btn-primary" onClick={view.retry}>
+              Check again
+            </button>
+          </div>
+        )}
         <p className="analyzing-note">You can leave this tab open; the profile opens on its own when the analysis is done.</p>
         <button type="button" className="btn" onClick={onCancel}>
           Choose another player

@@ -1,6 +1,6 @@
 import { patternLabel, sortPatterns } from "../coach/patternLabels";
 import type { GridGame, GridMark, Profile, ProfilePattern } from "../profile/types";
-import type { Level, Pattern } from "../types";
+import type { Level } from "../types";
 
 export type MarkSize = "s" | "m" | "l";
 export type PickLevel = Exclude<Level, "unrated">;
@@ -32,6 +32,7 @@ export interface GridRow {
   tag: string;
   name: string;
   description: string;
+  lastSeen: string | null;
   /** All marks of this pattern in the analyzed games. */
   count: number;
   /** Marks shown under the current levels. */
@@ -71,7 +72,7 @@ export function buildGrid(profile: Profile, levels: Level[]): GridLayout {
   }
   const markCount = (tag: string) => games.reduce((n, g) => n + g.marks.filter((m) => m.pattern === tag).length, 0);
   const listed = [...known.values()].map((p) => ({ ...p, count: Math.max(p.count, markCount(p.tag)) })).filter((p) => p.count > 0);
-  const ordered = sortPatterns(listed as unknown as Pattern[]) as unknown as ProfilePattern[];
+  const ordered = sortPatterns(listed);
 
   const rows: GridRow[] = ordered.map((p) => {
     const cols = byTag.get(p.tag) ?? new Map<number, GridMark[]>();
@@ -79,7 +80,7 @@ export function buildGrid(profile: Profile, levels: Level[]): GridLayout {
       .sort((a, b) => a[0] - b[0])
       .map(([col, marks]) => ({ col, game: games[col], marks: [...marks].sort((a, b) => asShare(b.winDrop) - asShare(a.winDrop)) }));
     const label = patternLabel(p.tag);
-    return { tag: p.tag, name: label.name, description: label.description, count: p.count, visible: cells.reduce((n, c) => n + c.marks.length, 0), cells };
+    return { tag: p.tag, name: label.name, description: label.description, lastSeen: p.lastSeen, count: p.count, visible: cells.reduce((n, c) => n + c.marks.length, 0), cells };
   });
 
   let worst: GridRow | null = null;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildGrid, describeMark, markSize, markVisible, moveNumberOf, resultMark } from "./gridLayout";
-import { dateRange, describeEta, estimateRemaining, formatDate, ratingChips, signed } from "./format";
+import { dateRange, describeEta, estimateRemaining, formatDate, ratingChips, shortDate, signed } from "./format";
 import { describeResult } from "./coachText";
 import type { GridGame, GridMark, Profile } from "../profile/types";
 
@@ -109,6 +109,7 @@ describe("format", () => {
   it("dates", () => {
     expect(formatDate("2026-03-12T08:00:00Z")).toBe("12 Mar 2026");
     expect(formatDate(null)).toBe("—");
+    expect(shortDate("2026-11-10T20:10:21Z")).toBe("10 Nov");
     expect(dateRange("2026-03-02", "2026-11-10")).toBe("2 Mar – 10 Nov 2026");
     expect(dateRange("2025-12-02", "2026-11-10")).toBe("2 Dec 2025 – 10 Nov 2026");
     expect(dateRange(null, "2026-11-10")).toBeNull();
@@ -143,6 +144,7 @@ describe("describeResult", () => {
     expect(describeResult("reveal_answer", { bestSpoken: "rook to e8", gameMoveSpoken: "king to h1" })).toBe("The best move was rook to e8. In the game you played king to h1.");
     expect(describeResult("next_move", { error: "There is no line to continue." })).toBe("There is no line to continue.");
     expect(describeResult("start_drill", { error: 'pattern "positional" has no examples' })).toBe("No positions for this pattern at this difficulty. Turn on another level.");
+    expect(describeResult("start_drill", { status: "Position ready, White to move", difficultyNote: "a tactic a few moves deep" })).toBe("Position ready, White to move.");
     expect(describeResult("step_line", { ply: 1, total: 2 })).toBeNull();
     expect(describeResult("x", null)).toBeNull();
   });

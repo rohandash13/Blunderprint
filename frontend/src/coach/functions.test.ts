@@ -749,7 +749,7 @@ describe("get_profile", () => {
     const r = await call("get_profile", {}, s, fx);
     await call("get_profile", {}, s, fx);
     expect(fx.fetchProfile).toHaveBeenCalledTimes(1);
-    expect(r.summary).toContain("20 games");
+    expect(r.summary).toContain("Your recurring leak is hanging pieces");
     expect(r.ratings).toEqual({ blitz: 1650 });
     expect(r.strengths.length).toBeGreaterThan(0);
     expect(r.leaks.length).toBeGreaterThan(0);

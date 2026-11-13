@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Chessboard } from "react-chessboard";
 import type { Arrow as CbArrow } from "react-chessboard/dist/chessboard/types";
 import { patternLabel } from "../coach/patternLabels";
@@ -36,23 +36,25 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
   const ex = drill?.example ?? lastShown;
   const tag = drill?.tag ?? coach.shownTag;
 
+  // Left and right arrows step the line; the handler reads the latest actions through a ref.
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
       if (e.key === "ArrowLeft") {
         e.preventDefault();
-        actions.prev();
-      }
-      if (e.key === "ArrowRight") {
+        actionsRef.current.prev();
+      } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        void actions.next();
+        void actionsRef.current.next();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, []);
 
   if (!ex) {
     return (
@@ -84,18 +86,13 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
         <header className="drill-head">
           <h1 id="drill-title">{title}</h1>
           <p className="drill-sub">
-            <span className={`to-move to-move-${toMove.toLowerCase()}`}>
-              <i aria-hidden="true" />
-              {toMove} to move
+            <span className={`lv-word lv-${ex.level}`}>
+              <i className={`dot lv-${ex.level}`} aria-hidden="true" />
+              {LEVEL_WORD[ex.level]}
             </span>
             <span aria-hidden="true">·</span>
             <span>
-              Move <span className="num">{moveNo}</span>
-            </span>
-            <span aria-hidden="true">·</span>
-            <span className={`lv-word lv-${ex.level}`}>
-              <i className={`dot lv-${ex.level}`} aria-hidden="true" />
-              {LEVEL_WORD[ex.level]}, {ex.kind}
+              from your game, move <span className="num">{moveNo}</span>
             </span>
           </p>
         </header>
@@ -114,6 +111,7 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
               customLightSquareStyle={{ backgroundColor: "#F0D9B5" }}
               customDarkSquareStyle={{ backgroundColor: "#B58863" }}
               customBoardStyle={{ borderRadius: "2px" }}
+              customNotationStyle={{ color: "#2a1d12", fontWeight: "700", fontSize: "11px" }}
             />
           </div>
         </div>
@@ -126,7 +124,7 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
             <span className="caption-count num" aria-label={total ? `Move ${ply} of ${total} in the line` : "No line yet"}>
               {total ? `${ply} / ${total}` : "0 / 0"}
             </span>
-            <p className="caption-text" aria-live="polite">
+            <p className="caption-text">
               {caption?.text ?? "Find the move you should have played. Type it, or say it with voice on."}
             </p>
           </div>

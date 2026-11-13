@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { patternLabel } from "../coach/patternLabels";
-import { profileInsights, recommendedPattern } from "../profile/profileInsights";
-import { profileSummary } from "../profile/profileSummary";
+import { leaksBeside, profileInsights, recommendedPattern } from "../profile/profileInsights";
+import { profileSummaryParts } from "../profile/profileSummary";
 import type { GridGame, GridMark, Profile as ProfileData } from "../profile/types";
 import type { Level, Report } from "../types";
 import { BlunderprintGrid } from "./BlunderprintGrid";
@@ -23,9 +23,11 @@ interface Props {
 const LEVEL_WORD: Record<Level, string> = { slip: "slips", tricky: "tricky", deep: "deep", unrated: "not yet rated" };
 
 export function Profile({ profile, report, levels, onLevels, onOpenMark, openingMark, markError, onDrill, onChangePlayer }: Props) {
-  const summary = useMemo(() => profileSummary(profile), [profile]);
-  const { strengths, leaks } = useMemo(() => profileInsights(profile), [profile]);
+  const summary = useMemo(() => profileSummaryParts(profile), [profile]);
+  const insights = useMemo(() => profileInsights(profile), [profile]);
   const start = useMemo(() => recommendedPattern(profile), [profile]);
+  const strengths = insights.strengths;
+  const leaks = leaksBeside(insights, start?.tag ?? null);
   const chips = ratingChips(profile.ratings);
   const range = dateRange(profile.analyzed.from, profile.analyzed.to);
   const { white, black } = profile.record;
@@ -37,7 +39,7 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
 
   return (
     <div className="profile">
-      <div className="profile-main">
+      <div className="profile-head">
         <header className="player">
           <div className="player-id">
             <h1>{profile.username}</h1>
@@ -98,8 +100,14 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
           )}
         </dl>
 
-        <p className="summary">{summary}</p>
+        <p className="summary">
+          {summary.before}
+          {summary.mark && <mark className="hl">{summary.mark}</mark>}
+          {summary.after}
+        </p>
+      </div>
 
+      <div className="profile-grid">
         <BlunderprintGrid profile={profile} levels={levels} onLevels={onLevels} onOpen={onOpenMark} opening={openingMark} error={markError} />
       </div>
 
@@ -111,7 +119,10 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
               {strengths.map((s) => (
                 <li key={s.id} className="insight is-strength">
                   <i aria-hidden="true" />
-                  {s.text}
+                  <span>
+                    <span className="insight-text">{s.text}</span>
+                    <span className="insight-note">{s.note}</span>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -127,7 +138,10 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
               {leaks.map((s) => (
                 <li key={s.id} className="insight is-leak">
                   <i aria-hidden="true" />
-                  {s.text}
+                  <span>
+                    <span className="insight-text">{s.text}</span>
+                    <span className="insight-note">{s.note}</span>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -138,8 +152,9 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
 
         {start && startLabel && (
           <section className="panel start-card" aria-labelledby="start-title">
-            <h2 id="start-title">Start with this</h2>
-            <p className="plate-name">{startLabel.name}</p>
+            <h2 id="start-title" className="start-title">
+              Start with <span className="hl-stroke">{startLabel.name.toLowerCase()}</span>
+            </h2>
             <p className="plate-note">{startLabel.description}</p>
             <dl className="plate-figures">
               <div>
@@ -147,7 +162,7 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
                 <dd className="num">{start.count}</dd>
               </div>
               <div>
-                <dt>At this difficulty</dt>
+                <dt title="Marks at the difficulty you picked">Shown</dt>
                 <dd className="num">{atLevels}</dd>
               </div>
               <div>

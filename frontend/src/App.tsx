@@ -26,16 +26,23 @@ export default function App() {
   const mainRef = useRef<HTMLElement>(null);
 
   // Load the profile once the player's analysis is done; the report (positions to drill) comes with it.
+  // Responses for a player who is no longer current are dropped (a restart can land mid-request).
+  const currentUser = useRef(username);
+  currentUser.current = username;
+  const isCurrent = (u: string) => currentUser.current === u;
+
   const loadProfile = useCallback(async () => {
-    if (!username) return;
+    const u = username;
+    if (!u) return;
     setProfileError(null);
     try {
-      const p = await fetchProfile(username);
-      if (!p) return setProfileError(`No finished analysis for ${username} yet.`);
+      const p = await fetchProfile(u);
+      if (!isCurrent(u)) return;
+      if (!p) return setProfileError(`No finished analysis for ${u} yet.`);
       setProfile(p);
       setCoachProfile(p);
     } catch (err) {
-      setProfileError(messageFor(err));
+      if (isCurrent(u)) setProfileError(messageFor(err));
     }
   }, [username, setCoachProfile]);
 
@@ -48,7 +55,8 @@ export default function App() {
     // levels are read once per player; later changes reload through changeLevels
   }, [username]);
 
-  // Each step starts at the top, and focus moves to its heading for keyboard and screen-reader users.
+  // Each step starts at the top, and focus moves to its heading for keyboard and screen-reader users;
+  // the profile's heading takes focus again once the profile has loaded in place of the loading line.
   useEffect(() => {
     window.scrollTo({ top: 0 });
     const h = mainRef.current?.querySelector("h1");
@@ -56,7 +64,7 @@ export default function App() {
       h.tabIndex = -1;
       h.focus({ preventScroll: true });
     }
-  }, [flow.step]);
+  }, [flow.step, profile]);
 
   const submit = (name: string) => {
     setLastName(name);
@@ -78,21 +86,24 @@ export default function App() {
 
   const openMark = async (tag: string, mark: GridMark, game: GridGame) => {
     const key = `${game.gameId}:${mark.ply}`;
+    const u = username;
     setOpening(key);
     setMarkError(null);
     try {
-      const ex = await fetchPosition(username, game.gameId, mark.ply);
+      const ex = await fetchPosition(u, game.gameId, mark.ply);
+      if (!isCurrent(u)) return;
       if (!ex) return setMarkError("That position isn't available any more. Try another mark.");
       coach.actions.openExample(tag, ex);
     } catch (err) {
-      setMarkError(messageFor(err));
+      if (isCurrent(u)) setMarkError(messageFor(err));
     } finally {
       setOpening(null);
     }
   };
 
   const changeLevels = async (lv: Parameters<typeof coach.actions.changeLevels>[0]) => {
-    const tag = flow.step === "drill" ? coach.drill?.tag ?? flow.focusTag : null;
+    // Only a running drill restarts at the new levels; an example being shown just clears.
+    const tag = flow.step === "drill" ? coach.drill?.tag ?? null : null;
     await coach.actions.changeLevels(lv);
     if (tag) await coach.actions.startDrill(tag); // stay on the pattern at the new difficulty
   };

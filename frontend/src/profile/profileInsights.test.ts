@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { profileInsights, recommendedPattern } from "./profileInsights";
+import { leaksBeside, profileInsights, recommendedPattern } from "./profileInsights";
 import type { Profile, ProfilePattern } from "./types";
 
 const lv = { slip: 0, tricky: 0, deep: 0, unrated: 0 };
@@ -67,11 +67,13 @@ describe("recommendedPattern", () => {
 });
 
 describe("phase wording and sample size", () => {
-  it("speaks of slipping most often, never of a share of mistakes", () => {
+  it("speaks of rates, never of a share of mistakes, and keeps 'slip' for the difficulty level", () => {
     const leak = profileInsights(profile()).leaks.find((l) => l.id === "phase:middlegame")!;
-    expect(leak.text).toBe("You slip most often in the middlegame");
-    expect(leak.phrase).toBe("you slip most often in the middlegame");
-    expect(JSON.stringify(profileInsights(profile()))).not.toContain("most of your mistakes");
+    expect(leak.text).toBe("Mistakes are most frequent in the middlegame");
+    expect(leak.phrase).toBe("mistakes are most frequent in the middlegame");
+    const all = JSON.stringify(profileInsights(profile()));
+    expect(all).not.toContain("most of your mistakes");
+    expect(all.toLowerCase()).not.toMatch(/\bslip/);
   });
 
   it("ignores phases with fewer than 30 of the player's moves", () => {
@@ -88,5 +90,28 @@ describe("phase wording and sample size", () => {
     expect(ids(r.strengths)).not.toContain("phase:opening");
     const withMoves = profileInsights(profile({ phases: { opening: 0, middlegame: 6, endgame: 4 }, phaseMoves: { opening: 100, middlegame: 100, endgame: 100 } }));
     expect(ids(withMoves.strengths)).toContain("phase:opening");
+  });
+});
+
+describe("evidence notes", () => {
+  it("every insight carries a one-line note in words, no percentages", () => {
+    const r = profileInsights(profile({ phaseMoves: { opening: 300, middlegame: 400, endgame: 100 }, clock: { underThirtyShare: 0.2, mistakeRateUnder30: 6, mistakeRateOver30: 2 } }));
+    for (const i of [...r.strengths, ...r.leaks]) {
+      expect(i.note.length).toBeGreaterThan(10);
+      expect(i.note).not.toMatch(/%|\d\.\d/);
+    }
+    expect(r.leaks.find((l) => l.id === "phase:middlegame")!.note).toBe("More mistakes per move than in any other phase, over 400 middlegame moves");
+    expect(r.leaks.find((l) => l.id === "pattern:hanging_piece")!.note).toBe("7 of the 20 mistakes I found");
+    expect(r.leaks.find((l) => l.id === "clock")!.note).toMatch(/^Twice as many/);
+  });
+});
+
+describe("leaksBeside", () => {
+  it("never repeats the start pattern: phase, then clock, else the next pattern", () => {
+    const withClock = profileInsights(profile({ clock: { underThirtyShare: 0.2, mistakeRateUnder30: 6, mistakeRateOver30: 2 } }));
+    expect(ids(leaksBeside(withClock, "hanging_piece"))).toEqual(["phase:middlegame", "clock"]);
+    const noClock = profileInsights(profile());
+    expect(ids(leaksBeside(noClock, "hanging_piece"))).toEqual(["phase:middlegame", "pattern2:positional"]);
+    expect(ids(leaksBeside(noClock, "positional"))).toEqual(["phase:middlegame", "pattern:hanging_piece"]);
   });
 });

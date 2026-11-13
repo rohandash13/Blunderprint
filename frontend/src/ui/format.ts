@@ -50,6 +50,12 @@ export function formatDate(iso: string | null | undefined): string {
   return d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—";
 }
 
+/** "12 Mar": for tight spaces where the year is clear from context. */
+export function shortDate(iso: string | null | undefined): string {
+  const d = parse(iso);
+  return d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) : "—";
+}
+
 /** "2 Mar – 10 Nov 2026", or across years "2 Dec 2025 – 10 Nov 2026". */
 export function dateRange(from: string | null | undefined, to: string | null | undefined): string | null {
   const a = parse(from);

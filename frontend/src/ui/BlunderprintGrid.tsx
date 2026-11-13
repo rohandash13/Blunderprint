@@ -3,6 +3,7 @@ import type { GridGame, GridMark, Profile } from "../profile/types";
 import type { Level } from "../types";
 import { buildGrid, describeMark, markSize, markVisible, PICK_LEVELS, resultMark, type GridCell } from "./gridLayout";
 import { LevelControl } from "./LevelControl";
+import { shortDate } from "./format";
 
 interface Props {
   profile: Profile;
@@ -14,7 +15,7 @@ interface Props {
   error: string | null;
 }
 
-const HINT = "Point at a mark to read it. Click it to drill that position.";
+const HINT = "Click a mark to drill that position.";
 
 export function BlunderprintGrid({ profile, levels, onLevels, onOpen, opening, error }: Props) {
   // Cells come from every level so marks can fade out and back in as the level control re-marks the sheet.
@@ -22,10 +23,31 @@ export function BlunderprintGrid({ profile, levels, onLevels, onOpen, opening, e
   const shown = useMemo(() => buildGrid(profile, levels), [profile, levels]);
   const [readout, setReadout] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [range, setRange] = useState<{ first: number; last: number } | null>(null);
+
+  /** Which games are in view when the sheet scrolls sideways (phones); null when it all fits. */
+  const measure = () => {
+    const el = scrollRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth + 1) return setRange(null);
+    const col = el.querySelector<HTMLElement>(".th-game");
+    const name = el.querySelector<HTMLElement>(".th-name");
+    const count = el.querySelector<HTMLElement>(".th-count");
+    if (!col || !name || !count) return setRange(null);
+    const w = col.getBoundingClientRect().width;
+    const sticky = name.getBoundingClientRect().width + count.getBoundingClientRect().width;
+    const n = profile.grid.length;
+    const first = Math.min(n, Math.floor(el.scrollLeft / w + 0.5) + 1);
+    const last = Math.min(n, Math.floor((el.scrollLeft + el.clientWidth - sticky) / w + 0.25));
+    setRange({ first, last: Math.max(first, last) });
+  };
+
   // When the sheet is wider than the screen, open on the newest games.
   useEffect(() => {
     const el = scrollRef.current;
     if (el && el.scrollWidth > el.clientWidth) el.scrollLeft = el.scrollWidth;
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
   }, [profile]);
   const games = all.games;
   const visibleTotal = shown.rows.reduce((n, r) => n + r.visible, 0);
@@ -61,7 +83,14 @@ export function BlunderprintGrid({ profile, levels, onLevels, onOpen, opening, e
         <LevelControl levels={levels} onChange={onLevels} counts={all.levelCounts} />
       </div>
 
-      <div className="grid-scroll" ref={scrollRef}>
+      {range && (
+        <p className="grid-range">
+          Games <span className="num">{range.first}</span>–<span className="num">{range.last}</span> of <span className="num">{games.length}</span>
+          {range.first > 1 ? " · scroll for earlier" : range.last < games.length ? " · scroll for later" : ""}
+        </p>
+      )}
+      <div className="grid-scroll" ref={scrollRef} onScroll={measure}>
+        <div className="grid-sheet">
         <table className="bp-grid" style={{ ["--cols" as string]: games.length }}>
           <caption className="sr-only">
             Mistake patterns by game. {visibleTotal} marks shown at the chosen difficulty.
@@ -96,7 +125,11 @@ export function BlunderprintGrid({ profile, levels, onLevels, onOpen, opening, e
               return (
                 <tr key={row.tag} className={worst ? "is-worst" : muted ? "is-muted" : undefined}>
                   <th scope="row" className="td-name" title={row.description}>
-                    {row.name}
+                    <span className="plate-n">{row.name}</span>
+                    <span className="plate-meta">
+                      {row.lastSeen ? `${shortDate(row.lastSeen)} · ` : ""}
+                      {row.description}
+                    </span>
                   </th>
                   <td className="td-count num">{row.count}</td>
                   {games.map((g, col) => {
@@ -144,9 +177,10 @@ export function BlunderprintGrid({ profile, levels, onLevels, onOpen, opening, e
             </tr>
           </tfoot>
         </table>
+        </div>
       </div>
 
-      <div className="grid-foot">
+      <div className={error || opening || readout ? "grid-foot is-reading" : "grid-foot"}>
         <p className={error ? "readout is-error" : "readout"} aria-live="polite">
           {error ?? (opening ? "Opening that position…" : readout ?? HINT)}
         </p>

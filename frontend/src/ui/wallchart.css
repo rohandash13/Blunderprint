@@ -99,7 +99,7 @@ h1 {
   font-size: var(--fs-title);
   font-weight: 800;
   letter-spacing: -0.02em;
-  line-height: 1.15;
+  line-height: calc(var(--cell) * 2);
   text-wrap: balance;
 }
 
@@ -556,19 +556,20 @@ input {
 
 .main {
   min-width: 0;
-  padding: var(--s4) var(--s4) var(--s6);
+  padding: var(--s4);
   background-image:
     linear-gradient(var(--grid-line) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: var(--cell) var(--cell);
-  background-position: -1px -1px;
+  background-position: 0 0;
 }
 
+/* Panel rules are drawn inside the box (inset shadows), so a panel's outer edges sit on cell lines. */
 .panel {
+  --ring: inset 0 0 0 1px var(--line);
   background: var(--paper);
-  border: 1px solid var(--line);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--ring), var(--shadow);
 }
 
 .panel-head {
@@ -577,8 +578,8 @@ input {
   justify-content: space-between;
   gap: var(--s3);
   flex-wrap: wrap;
-  padding: var(--s3);
-  border-bottom: 1px solid var(--line);
+  padding: var(--s3) var(--s4);
+  box-shadow: inset 0 -1px 0 var(--line);
 }
 
 .panel-sub {
@@ -599,10 +600,134 @@ input {
 .landing,
 .analyzing {
   display: grid;
-  min-height: calc(100vh - 2 * var(--s4) - var(--s6));
-  align-content: center;
+  align-content: start;
   justify-items: start;
   padding-left: var(--s6);
+  padding-top: max(0px, round(down, calc((100vh - 336px) / 2), var(--cell)));
+}
+
+.landing {
+  min-height: 0;
+  align-content: start;
+  justify-items: stretch;
+  padding-left: 0;
+  /* roughly centred, rounded to whole cells so the panels sit on the grid */
+  padding-top: max(0px, round(down, calc((100vh - 528px) / 2), var(--cell)));
+}
+
+/* the form, centred on whole cells; beside it a real slice of the sample player's wallchart once it loads */
+.landing-row {
+  --row-w: calc(var(--cell) * 22);
+  display: grid;
+  grid-template-columns: calc(var(--cell) * 22);
+  gap: var(--s4);
+  align-items: start;
+  width: max-content;
+  max-width: 100%;
+  margin-left: max(0px, round(down, calc((100% - var(--row-w)) / 2), var(--cell)));
+}
+
+.landing-row:has(.demo-strip) {
+  --row-w: calc(var(--cell) * 48);
+  grid-template-columns: calc(var(--cell) * 22) calc(var(--cell) * 25);
+}
+
+.landing-row .landing-panel {
+  max-width: none;
+}
+
+.demo-strip {
+  margin: 0;
+  overflow: hidden;
+}
+
+.demo-sheet {
+  --name-w: calc(var(--cell) * 7);
+  display: grid;
+  border-bottom: 1.5px solid var(--ink);
+}
+
+.demo-row {
+  display: grid;
+  grid-template-columns: var(--name-w) minmax(0, 1fr);
+  align-items: center;
+  height: calc(var(--cell) * 2);
+  border-bottom: 1px solid var(--line);
+}
+
+.demo-row:last-child {
+  border-bottom: 0;
+}
+
+.demo-row.is-worst {
+  background: var(--hl);
+}
+
+.demo-name {
+  padding: 0 var(--s2) 0 var(--s3);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+
+.demo-cells {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  align-items: center;
+  justify-items: center;
+  height: 100%;
+  padding-right: var(--s3);
+  border-left: 1.5px solid var(--ink);
+  background-image: linear-gradient(90deg, rgba(26, 26, 26, 0.07) 1px, transparent 1px);
+  background-size: calc((100% - var(--s3)) / var(--cols)) 100%;
+}
+
+.demo-dot {
+  grid-row: 1;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.demo-dot.sz-s {
+  width: 6px;
+  height: 6px;
+}
+
+.demo-dot.sz-l {
+  width: 12px;
+  height: 12px;
+}
+
+.demo-dot.lv-deep {
+  background: var(--red);
+}
+
+.demo-dot.lv-tricky {
+  background: var(--ink);
+}
+
+.demo-dot.lv-slip {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+}
+
+.demo-dot.lv-unrated {
+  border: 1.5px dashed var(--mute);
+}
+
+.demo-strip figcaption {
+  padding: 12px var(--s3);
+  color: var(--mute);
+  line-height: 1.5;
+}
+
+.stopped {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  margin-bottom: var(--s3);
 }
 
 .landing-panel,
@@ -610,7 +735,7 @@ input {
 .loading-panel {
   width: 100%;
   max-width: 648px;
-  padding: var(--s5);
+  padding: var(--s4);
 }
 
 .landing-form {
@@ -689,20 +814,40 @@ input {
 /* ---------- profile ---------- */
 
 .profile {
+  --side-w: calc(var(--cell) * 12);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 304px;
+  grid-template-columns: minmax(0, 1fr) var(--side-w);
+  /* the main column is a whole number of cells, so the side column starts on a cell line */
+  grid-template-columns: round(down, calc(100% - var(--side-w) - var(--s4)), var(--cell)) var(--side-w);
+  grid-template-areas:
+    "head side"
+    "grid side";
+  grid-template-rows: auto 1fr;
   gap: var(--s4);
   align-items: start;
-  max-width: 1200px;
+  max-width: 1320px;
 }
 
-.profile-main {
+/* the head takes whole cells so the grid panel under it starts on a cell line */
+.profile-head {
+  grid-area: head;
   min-width: 0;
+  min-height: calc(var(--cell) * 10);
+}
+
+.profile-grid {
+  grid-area: grid;
+  min-width: 0;
+}
+
+.profile-side {
+  grid-area: side;
 }
 
 .player {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
+  min-height: calc(var(--cell) * 3);
   justify-content: space-between;
   gap: var(--s3);
   flex-wrap: wrap;
@@ -715,9 +860,10 @@ input {
 .player-sub {
   display: flex;
   align-items: center;
+  height: var(--cell);
   flex-wrap: wrap;
   gap: var(--s2);
-  margin-top: var(--s1);
+  margin-top: 0;
   color: var(--mute);
 }
 
@@ -777,9 +923,11 @@ input {
 .facts {
   display: flex;
   flex-wrap: wrap;
+  align-content: center;
   gap: var(--s2) var(--s4);
-  margin: var(--s3) 0;
-  padding: 12px 0;
+  min-height: calc(var(--cell) * 2);
+  margin: 0 0 var(--s4);
+  padding: var(--s1) 0;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
@@ -803,25 +951,37 @@ input {
 
 .summary {
   max-width: 70ch;
-  margin-bottom: var(--s4);
   font-size: var(--fs-lede);
-  line-height: 1.55;
+  line-height: var(--cell);
   text-wrap: pretty;
+}
+
+/* a highlighter stroke across the lower half: the summary's leak and the start card's pattern */
+.hl,
+.hl-stroke {
+  background: linear-gradient(transparent 50%, var(--hl) 50%, var(--hl) 94%, transparent 94%);
+  color: inherit;
+  font-weight: 700;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .profile-side {
   display: grid;
-  gap: var(--s3);
+  gap: var(--s4);
 }
 
+/* every line in the side cards is one cell tall, so each card is whole cells */
 .side-card,
 .start-card {
-  padding: var(--s3);
+  padding: var(--s4);
+  line-height: var(--cell);
 }
 
 .side-card h2,
 .start-card h2 {
-  margin-bottom: 12px;
+  margin: 0;
+  line-height: var(--cell);
 }
 
 .insights {
@@ -832,14 +992,34 @@ input {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 10px 0;
-  border-top: 1px solid var(--line);
+  padding: 12px 0;
+  box-shadow: inset 0 1px 0 var(--line);
   font-weight: 600;
 }
 
+.insight > span {
+  display: grid;
+  min-width: 0;
+}
+
+.insight-text {
+  font-weight: 700;
+  line-height: var(--cell);
+}
+
+.insight-note {
+  color: var(--mute);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: var(--cell);
+}
+
+.insight-note:empty {
+  display: none;
+}
+
 .insight:first-child {
-  border-top: 0;
-  padding-top: 0;
+  box-shadow: none;
 }
 
 .insight i {
@@ -860,7 +1040,21 @@ input {
 }
 
 .start-card {
-  border: 1.5px solid var(--ink);
+  --ring: inset 0 0 0 1.5px var(--ink);
+}
+
+.start-card .start-title {
+  margin-bottom: 0;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: var(--cell);
+  text-transform: none;
+  text-wrap: balance;
+}
+
+.start-card .hl-stroke {
+  font-weight: 800;
 }
 
 .plate-name {
@@ -889,30 +1083,71 @@ input {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, auto));
   justify-content: start;
-  gap: var(--s2) var(--s4);
-  margin: var(--s3) 0;
+  gap: 0 var(--s4);
+  margin: var(--s4) 0;
+  line-height: var(--cell);
 }
 
 .plate-figures dd {
-  margin-top: 2px;
   font-weight: 700;
 }
 
+.start-card .plate-note {
+  margin: 0;
+  line-height: var(--cell);
+}
+
+.start-card .btn-block {
+  min-height: calc(var(--cell) * 2);
+}
+
 .start-card .form-note {
-  margin-top: var(--s2);
+  margin-top: 0;
+  line-height: var(--cell);
 }
 
 /* ---------- the Blunderprint grid ---------- */
 
+/* title and note on the left, the level control on the right: four cells tall */
+.grid-panel > .panel-head {
+  flex-wrap: nowrap;
+  align-items: center;
+  min-height: calc(var(--cell) * 4);
+}
+
+.grid-panel > .panel-head > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.grid-panel .panel-sub {
+  max-width: 62ch;
+}
+
+.grid-panel .levels {
+  flex: none;
+}
+
+.grid-range {
+  padding: var(--s2) var(--s4) 0;
+  color: var(--mute);
+  font-size: 13px;
+}
+
 .grid-scroll {
+  margin: 0 1px; /* keeps the sticky name column off the panel's inset rule */
   overflow-x: auto;
-  padding: 0 var(--s3);
+  scrollbar-width: thin;
+}
+
+.grid-sheet {
+  min-width: min-content;
 }
 
 .bp-grid {
-  --name-w: 168px;
-  --count-w: 48px;
-  --game-w: 15px;
+  --name-w: calc(var(--cell) * 9);
+  --count-w: calc(var(--cell) * 2);
+  --game-w: 14px;
   width: 100%;
   min-width: calc(var(--name-w) + var(--count-w) + var(--cols) * var(--game-w));
   border-collapse: collapse;
@@ -933,10 +1168,32 @@ input {
   font-weight: inherit;
 }
 
+/* row rules are inset shadows, not borders, so every row is exactly two cells tall */
 .bp-grid thead th {
   height: 48px;
   vertical-align: bottom;
-  border-bottom: 1.5px solid var(--ink);
+  box-shadow: inset 0 -1.5px 0 var(--ink);
+}
+
+.th-name {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding-left: var(--s4) !important;
+  background: var(--paper);
+}
+
+/* name and total stay put while the games scroll sideways on narrow screens */
+.th-count,
+.td-count {
+  position: sticky;
+  left: var(--name-w);
+  z-index: 1;
+  background: var(--paper);
+}
+
+.bp-grid tr.is-worst .td-count {
+  background: var(--hl);
 }
 
 .th-name,
@@ -989,25 +1246,53 @@ input {
 
 .bp-grid tbody tr {
   height: 48px;
-  border-bottom: 1px solid var(--line);
+}
+
+.bp-grid tbody > tr > * {
+  box-shadow: inset 0 -1px 0 var(--line);
 }
 
 .td-name {
   position: sticky;
   left: 0;
   z-index: 1;
-  padding-right: var(--s2) !important;
+  max-width: var(--name-w);
+  padding: 0 var(--s2) 0 var(--s4) !important;
   background: var(--paper);
   font-weight: 700 !important;
   text-align: left;
-  white-space: nowrap;
+}
+
+/* the row's name plate: name, then last seen and the one-line note */
+.plate-n,
+.plate-meta {
+  display: block;
   overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.td-count {
+.plate-n {
+  line-height: 18px;
+}
+
+.plate-meta {
+  margin-top: 1px;
+  color: var(--mute);
+  font-size: var(--fs-small);
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.bp-grid tr.is-worst .plate-meta {
+  color: #3d3a22;
+}
+
+.td-count,
+.bp-grid tbody > tr > .td-count {
   padding-right: 10px !important;
-  border-right: 1.5px solid var(--ink);
+  /* drawn as a shadow so the rule travels with the sticky column */
+  box-shadow: inset -1.5px 0 0 var(--ink), inset 0 -1px 0 var(--line);
   font-weight: 800 !important;
   text-align: right;
 }
@@ -1019,7 +1304,14 @@ input {
 
 .bp-grid tr.is-worst {
   background: var(--hl);
-  border-bottom-color: var(--hl-edge);
+}
+
+.bp-grid tbody > tr.is-worst > * {
+  box-shadow: inset 0 -1px 0 var(--hl-edge);
+}
+
+.bp-grid tbody > tr.is-worst > .td-count {
+  box-shadow: inset -1.5px 0 0 var(--ink), inset 0 -1px 0 var(--hl-edge);
 }
 
 .bp-grid tr.is-worst .td-name {
@@ -1037,7 +1329,7 @@ input {
 }
 
 .bp-grid tfoot tr {
-  height: 40px;
+  height: 48px;
 }
 
 .bp-grid tfoot .td-name {
@@ -1157,12 +1449,18 @@ input {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--s2) var(--s4);
-  padding: 12px var(--s3);
-  border-top: 1px solid var(--line);
+  min-height: calc(var(--cell) * 2);
+  padding: var(--s2) var(--s4);
+  box-shadow: inset 0 1px 0 var(--line);
 }
 
 .readout {
-  flex: 1 1 320px;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
   min-height: 20px;
   color: var(--mute);
 }
@@ -1176,9 +1474,18 @@ input {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--s2) var(--s3);
+  gap: var(--s2) 12px;
   color: var(--mute);
   font-size: 13px;
+}
+
+.grid-foot .legend {
+  flex: none;
+}
+
+/* while a mark is read out, the sentence takes the whole line; the key comes back after */
+.grid-foot.is-reading .legend {
+  display: none;
 }
 
 .legend li {
@@ -1188,7 +1495,7 @@ input {
 }
 
 .legend-sep {
-  padding-left: var(--s3);
+  padding-left: 12px;
   border-left: 1px solid var(--line);
 }
 
@@ -1238,23 +1545,36 @@ input {
   margin-bottom: var(--s4);
 }
 
+.focus-head .lede {
+  margin-top: 0;
+}
+
+/* plates are whole cells wide; every line inside is one cell tall */
 .plates {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(336px, 1fr));
-  gap: var(--s3);
+  grid-template-columns: repeat(auto-fill, calc(var(--cell) * 15));
+  gap: var(--s4);
 }
 
 .plate {
   display: flex;
   flex-direction: column;
-  padding: var(--s3);
+  padding: var(--s4);
+  line-height: var(--cell);
 }
 
 .plate-top {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  height: var(--cell);
   justify-content: space-between;
   gap: var(--s3);
+}
+
+.plate .plate-name,
+.plate .plate-note {
+  margin: 0;
+  line-height: var(--cell);
 }
 
 .plate .plate-figures {
@@ -1270,20 +1590,12 @@ input {
 }
 
 .plate.is-muted .plate-name,
-.plate.is-muted .plate .plate-figures {
-  grid-template-columns: repeat(2, minmax(0, auto));
-}
-
-.plate .plate-figures > div:last-child {
-  grid-column: 1 / -1;
-}
-
-.plate-count {
+.plate.is-muted .plate-count {
   color: var(--mute);
 }
 
 .plate.is-worst {
-  border-color: var(--ink);
+  --ring: inset 0 0 0 1.5px var(--ink);
 }
 
 .mix {
@@ -1302,6 +1614,7 @@ input {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--s2);
+  min-height: calc(var(--cell) * 2);
   margin-top: auto;
 }
 
@@ -1314,7 +1627,7 @@ input {
 
 .drill {
   display: grid;
-  grid-template-columns: minmax(0, 600px) minmax(320px, 440px);
+  grid-template-columns: minmax(0, calc(var(--cell) * 25)) minmax(320px, calc(var(--cell) * 18));
   gap: var(--s4);
   align-items: start;
 }
@@ -1324,7 +1637,7 @@ input {
 }
 
 .drill-head {
-  margin-bottom: var(--s3);
+  margin-bottom: var(--s4);
 }
 
 .drill-sub {
@@ -1332,31 +1645,16 @@ input {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--s2);
-  margin-top: 6px;
+  margin: 0;
+  line-height: var(--cell);
   color: var(--mute);
   font-weight: 600;
 }
 
-.to-move,
 .lv-word {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-
-.to-move i {
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid var(--ink);
-  border-radius: 50%;
-}
-
-.to-move-white i {
-  background: #fff;
-}
-
-.to-move-black i {
-  background: var(--ink);
 }
 
 .board-wrap {
@@ -1365,7 +1663,7 @@ input {
 
 .board-frame {
   padding: 0;
-  border: 1.5px solid var(--ink);
+  outline: 1.5px solid var(--ink); /* outside the box, so the board stays whole cells */
   border-radius: var(--radius);
   background: var(--sq-dark);
   box-shadow: var(--shadow);
@@ -1379,12 +1677,11 @@ input {
   align-items: center;
   gap: 12px;
   min-height: 72px;
-  margin-top: var(--s3);
+  margin-top: var(--s4);
   padding: 12px;
-  border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--paper);
-  box-shadow: var(--shadow);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow);
 }
 
 .caption-body {
@@ -1424,8 +1721,8 @@ input {
   display: flex;
   flex-direction: column;
   gap: var(--s3);
-  min-height: 560px;
-  max-height: calc(100vh - 2 * var(--s4));
+  min-height: calc(var(--cell) * 24);
+  max-height: round(down, calc(100vh - 2 * var(--s4)), var(--cell));
   padding: var(--s3);
   position: sticky;
   top: var(--s4);
@@ -1526,10 +1823,26 @@ input {
 @media (max-width: 1180px) {
   .profile {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "head"
+      "side"
+      "grid";
+    grid-template-rows: auto;
+  }
+
+  .profile-head {
+    min-height: 0;
+  }
+
+  .landing-row,
+  .landing-row:has(.demo-strip) {
+    --row-w: 648px;
+    grid-template-columns: minmax(0, 648px);
+    width: auto;
   }
 
   .profile-side {
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(264px, 1fr));
   }
 
   .drill {
@@ -1634,12 +1947,48 @@ input {
 
   h1 {
     font-size: 24px;
+    line-height: 32px;
   }
 
   .landing,
   .analyzing {
     min-height: 0;
     padding: var(--s3) 0 0;
+  }
+
+  .demo-sheet {
+    --name-w: 120px;
+  }
+
+  .demo-name {
+    padding-left: 12px;
+    font-size: 13px;
+    line-height: 16px;
+    white-space: normal;
+  }
+
+  .demo-cells {
+    padding-right: 12px;
+    background-size: calc((100% - 12px) / var(--cols)) 100%;
+  }
+
+  .demo-dot.sz-l {
+    width: 8px;
+    height: 8px;
+  }
+
+  .demo-dot.sz-m {
+    width: 6px;
+    height: 6px;
+  }
+
+  .demo-dot.sz-s {
+    width: 4px;
+    height: 4px;
+  }
+
+  .demo-dot.lv-slip {
+    border-width: 1.5px;
   }
 
   .landing-panel,
@@ -1655,6 +2004,7 @@ input {
 
   .player {
     align-items: flex-start;
+    margin-bottom: 12px;
   }
 
   .summary {
@@ -1666,9 +2016,18 @@ input {
   }
 
   .bp-grid {
-    --name-w: 132px;
-    --count-w: 40px;
+    --name-w: 144px;
+    --count-w: 48px;
     --game-w: 18px;
+  }
+
+  .th-count {
+    padding-right: 8px !important;
+    letter-spacing: 0.02em;
+  }
+
+  .td-count {
+    padding-right: 8px !important;
   }
 
   .td-name,
@@ -1677,13 +2036,96 @@ input {
   }
 
   .bp-grid tbody .td-name {
-    white-space: normal;
     font-size: 13px;
-    line-height: 1.2;
+  }
+
+  .bp-grid tbody .plate-n {
+    white-space: normal;
+    line-height: 16px;
+  }
+
+  /* no room for the note on a phone; the name's title still carries it */
+  .plate-meta {
+    display: none;
+  }
+
+  /* room after the newest game so its number and score are never cut at the edge */
+  .grid-sheet {
+    width: max-content;
+    padding-right: var(--s3);
+  }
+
+  .grid-sheet .bp-grid {
+    width: auto;
+  }
+
+  /* phone: strengths, leaks and the start card come before the long grid */
+  .profile {
+    gap: var(--s3);
+    grid-template-areas: none;
+  }
+
+  .profile-side {
+    display: contents;
+  }
+
+  .profile-head {
+    order: 0;
+  }
+
+  .profile-side .side-card {
+    order: 1;
+  }
+
+  .start-card {
+    order: 2;
+  }
+
+  .profile-grid {
+    order: 3;
+  }
+
+  .profile > *,
+  .profile-side > * {
+    grid-area: auto;
   }
 
   .panel-head {
     padding: 12px;
+  }
+
+  .grid-panel > .panel-head {
+    flex-wrap: wrap;
+    min-height: 0;
+  }
+
+  .readout {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+
+  .grid-foot .legend {
+    flex: 1 1 100%;
+  }
+
+  .grid-foot.is-reading .legend {
+    display: flex;
+  }
+
+  .grid-panel .levels {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .seg {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .seg-btn {
+    flex: 1 1 0;
+    justify-content: center;
+    min-width: 0;
   }
 
   .plates {

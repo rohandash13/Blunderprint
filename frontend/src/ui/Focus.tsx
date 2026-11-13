@@ -1,6 +1,6 @@
 import { patternLabel, sortPatterns } from "../coach/patternLabels";
 import type { Profile } from "../profile/types";
-import type { Level, Pattern, Report } from "../types";
+import type { Level, Report } from "../types";
 import { formatDate } from "./format";
 import { LevelControl } from "./LevelControl";
 import { buildGrid } from "./gridLayout";
@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function Focus({ profile, report, reportError, levels, onLevels, onDrill, onShow, busy }: Props) {
-  const patterns = (sortPatterns(profile.patterns.filter((p) => p.count > 0) as unknown as Pattern[]) as unknown as Profile["patterns"]);
+  const patterns = sortPatterns(profile.patterns.filter((p) => p.count > 0));
   const worst = buildGrid(profile, levels).worst;
   const levelCounts = patterns.reduce(
     (acc, p) => ({ slip: acc.slip + p.levels.slip, tricky: acc.tricky + p.levels.tricky, deep: acc.deep + p.levels.deep }),
