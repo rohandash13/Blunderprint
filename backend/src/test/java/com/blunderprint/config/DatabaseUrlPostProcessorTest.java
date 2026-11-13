@@ -6,6 +6,22 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
 
 class DatabaseUrlPostProcessorTest {
+    /** Environment whose only DATABASE_URL lives in the real OS-environment property source. */
+    private static MockEnvironment sysEnv(String key, String value) {
+        var env = new MockEnvironment();
+        env.getPropertySources().addLast(new org.springframework.core.env.MapPropertySource(
+            org.springframework.core.env.StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME,
+            java.util.Map.of(key, value)));
+        return env;
+    }
+
+    @Test
+    void ignoresDatabaseUrlFromNonSystemSources() {
+        var env = new MockEnvironment().withProperty("DATABASE_URL", "postgresql://u:p@h/db");
+        new DatabaseUrlPostProcessor().postProcessEnvironment(env, null);
+        assertNull(env.getProperty("spring.datasource.url"));
+    }
+
     @Test
     void parsesNeonUrlWithoutPort() {
         var m = DatabaseUrlPostProcessor.parse("postgresql://neonuser:s3cret@ep-cool-123.us-east-2.aws.neon.tech/neondb?sslmode=require");
@@ -39,14 +55,14 @@ class DatabaseUrlPostProcessorTest {
         var env = new MockEnvironment();
         new DatabaseUrlPostProcessor().postProcessEnvironment(env, null);
         assertNull(env.getProperty("spring.datasource.url"));
-        env.setProperty("DATABASE_URL", "  ");
+        env = sysEnv("DATABASE_URL", "  ");
         new DatabaseUrlPostProcessor().postProcessEnvironment(env, null);
         assertNull(env.getProperty("spring.datasource.url"));
     }
 
     @Test
     void appliesWhenDatabaseUrlSet() {
-        var env = new MockEnvironment().withProperty("DATABASE_URL", "postgresql://u:p@h/db?sslmode=require");
+        var env = sysEnv("DATABASE_URL", "postgresql://u:p@h/db?sslmode=require");
         new DatabaseUrlPostProcessor().postProcessEnvironment(env, null);
         assertEquals("jdbc:postgresql://h/db?sslmode=require", env.getProperty("spring.datasource.url"));
         assertEquals("u", env.getProperty("spring.datasource.username"));
@@ -55,9 +71,8 @@ class DatabaseUrlPostProcessorTest {
 
     @Test
     void explicitDbUrlWins() {
-        var env = new MockEnvironment()
-            .withProperty("DATABASE_URL", "postgresql://u:p@h/db")
-            .withProperty("DB_URL", "jdbc:postgresql://other/x");
+        var env = sysEnv("DATABASE_URL", "postgresql://u:p@h/db");
+        env.setProperty("DB_URL", "jdbc:postgresql://other/x");
         new DatabaseUrlPostProcessor().postProcessEnvironment(env, null);
         assertNull(env.getProperty("spring.datasource.url"));
     }
@@ -71,14 +86,14 @@ class DatabaseUrlPostProcessorTest {
 
     @Test
     void stripsQuotesLeftByDotEnvFiles() {
-        var env = new MockEnvironment().withProperty("DATABASE_URL", "\"postgresql://u:p@h/db?sslmode=require\"");
+        var env = sysEnv("DATABASE_URL", "\"postgresql://u:p@h/db?sslmode=require\"");
         new DatabaseUrlPostProcessor().postProcessEnvironment(env, null);
         assertEquals("jdbc:postgresql://h/db?sslmode=require", env.getProperty("spring.datasource.url"));
     }
 
     @Test
     void doesNotOverrideHigherPrecedenceSources() {
-        var env = new MockEnvironment().withProperty("DATABASE_URL", "postgresql://u:p@h/db");
+        var env = sysEnv("DATABASE_URL", "postgresql://u:p@h/db");
         env.getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource(
             "test", java.util.Map.of("spring.datasource.url", "jdbc:postgresql://testcontainer/x")));
         new DatabaseUrlPostProcessor().postProcessEnvironment(env, null);

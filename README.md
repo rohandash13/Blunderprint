@@ -82,7 +82,7 @@ cp .env.example .env   # then set DEEPGRAM_API_KEY
 Model service (port 8000):
 
 ```bash
-cd ml && pip install -e . && MODEL_CKPT=checkpoints/mlp.pt uvicorn blunderprint_ml.service:app --port 8000
+cd ml && pip install -e ".[dev,train]" && MODEL_CKPT=checkpoints/mlp.pt uvicorn blunderprint_ml.service:app --port 8000
 ```
 
 Backend (port 8080):

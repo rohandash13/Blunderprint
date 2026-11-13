@@ -76,7 +76,10 @@ public class VoiceRateLimitFilter extends OncePerRequestFilter {
 
     private static String clientIp(HttpServletRequest req) {
         String xff = req.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) return xff.split(",")[0].trim();
+        if (xff != null && !xff.isBlank()) {
+            String[] hops = xff.split(",");
+            return hops[hops.length - 1].trim(); // the entry the platform proxy appended; earlier ones are client-supplied
+        }
         return req.getRemoteAddr();
     }
 }

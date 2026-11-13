@@ -45,11 +45,13 @@ class VoiceRateLimitFilterTest {
     }
 
     @Test
-    void usesFirstForwardedForHop() throws Exception {
+    void usesLastForwardedForHopSoSpoofedPrefixDoesNotHelp() throws Exception {
         var f = new VoiceRateLimitFilter(1, 100, new MutableClock());
-        assertEquals(200, hit(f, "/voice/token", "10.0.0.1", "9.9.9.9, 10.0.0.1").getStatus());
-        assertEquals(429, hit(f, "/voice/token", "10.0.0.2", "9.9.9.9").getStatus());
+        assertEquals(200, hit(f, "/voice/token", "10.0.0.1", "1.2.3.4, 9.9.9.9").getStatus());
+        assertEquals(429, hit(f, "/voice/token", "10.0.0.2", "5.6.7.8, 9.9.9.9").getStatus());
         assertEquals(200, hit(f, "/voice/token", "10.0.0.1", "8.8.8.8").getStatus());
+        assertEquals(200, hit(f, "/voice/token", "7.7.7.7", null).getStatus()); // remote-addr fallback
+        assertEquals(429, hit(f, "/voice/token", "7.7.7.7", null).getStatus());
     }
 
     @Test

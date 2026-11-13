@@ -11,18 +11,23 @@ import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertySource;
+import org.springframework.core.env.StandardEnvironment;
 
 /**
  * Translates a Neon/Heroku-style {@code DATABASE_URL}
  * ({@code postgresql://user:pass@host[:port]/db?sslmode=require}) into Spring datasource properties.
- * An explicit {@code DB_URL} wins. Never logs or echoes the credentials.
+ * Reads only the OS environment (never .env). An explicit {@code DB_URL} wins. Never logs or echoes the credentials.
  */
 public class DatabaseUrlPostProcessor implements EnvironmentPostProcessor, Ordered {
     static final String SOURCE_NAME = "databaseUrlDatasource";
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment env, SpringApplication app) {
-        String url = env.getProperty("DATABASE_URL");
+        // Only the real OS environment counts: a DATABASE_URL imported from a local .env must never
+        // silently point a dev machine at the production database.
+        PropertySource<?> sys = env.getPropertySources().get(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        Object raw = sys == null ? null : sys.getProperty("DATABASE_URL");
+        String url = raw == null ? null : raw.toString();
         if (url == null || url.isBlank() || env.getProperty("DB_URL") != null) return;
         var source = new MapPropertySource(SOURCE_NAME, parse(unquote(url.trim())));
         // Beat application.yml / .env defaults, but stay below command line, system properties and test properties.
