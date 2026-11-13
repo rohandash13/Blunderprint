@@ -1114,9 +1114,14 @@ input {
 }
 
 .start-card .plate-figures {
+  grid-template-columns: repeat(2, minmax(0, auto));
   margin: var(--s3) 0;
   row-gap: var(--s2);
   line-height: 20px;
+}
+
+.start-card .plate-figures > div:last-child {
+  grid-column: 1 / -1;
 }
 
 .start-card .btn-block {
