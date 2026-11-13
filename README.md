@@ -1,5 +1,7 @@
 # Blunderprint
 
+**Live demo:** https://useblunderprint.vercel.app (voice needs a microphone; try `Knight_ofthelight73`)
+
 Finds the chess mistakes a player keeps repeating, then coaches them through those positions by voice.
 
 Give it a Lichess username. It downloads the player's games, runs every position through Stockfish, scores each
@@ -114,6 +116,18 @@ cd ml && pytest
 ```bash
 cd frontend && npm test
 ```
+
+## Deployment
+
+Vercel (React frontend, `frontend/`, rewrites `/players`, `/engine`, `/voice` to the API) -> Render web service
+(Spring Boot + Stockfish, `backend/Dockerfile`) -> Render private service (PyTorch model, `ml/Dockerfile`) ->
+Neon Postgres. `render.yaml` is the Blueprint for both Render services.
+
+- Backend env: `DATABASE_URL` (Neon `postgresql://user:pass@host/db?sslmode=require`), `DEEPGRAM_API_KEY`,
+  `MODEL_HOSTPORT` (set from the model service), `DEMO_MODE`, `WORKERS_COUNT`, `JAVA_OPTS`.
+- `DEMO_MODE=true` returns 403 for `/admin/**` and `POST /analysis`, and `GET /voice/token` is rate-limited
+  (`voice.rate.per-ip-per-hour`, default 20, and `voice.rate.per-day`, default 300).
+
 
 ## Layout
 

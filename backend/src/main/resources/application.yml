@@ -1,3 +1,5 @@
+server:
+  port: ${PORT:8080}
 spring:
   task:
     scheduling:
@@ -16,7 +18,7 @@ engine:
   version: ${ENGINE_VERSION:stockfish-local}
   depth: 12
 workers:
-  count: 2
+  count: ${WORKERS_COUNT:2}
   autostart: true
   reaper-timeout-seconds: 120
   max-attempts: 3
@@ -25,7 +27,7 @@ lichess:
   base-url: https://lichess.org
   token: ${LICHESS_TOKEN:}
 model:
-  url: ${MODEL_URL:http://localhost:8000}
+  url: ${MODEL_URL:http://${MODEL_HOSTPORT:localhost:8000}}
 report:
   levels:
     slip-below: 300
@@ -34,3 +36,7 @@ report:
 deepgram:
   api-key: ${DEEPGRAM_API_KEY:}
   base-url: https://api.deepgram.com
+voice:
+  rate:
+    per-ip-per-hour: 20
+    per-day: 300

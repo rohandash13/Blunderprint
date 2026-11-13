@@ -1,0 +1,37 @@
+services:
+  - type: pserv
+    name: blunderprint-model
+    runtime: docker
+    region: ohio
+    plan: starter
+    branch: main
+    autoDeploy: true
+    dockerfilePath: ./ml/Dockerfile
+    dockerContext: ./ml
+
+  - type: web
+    name: blunderprint-api
+    runtime: docker
+    region: ohio
+    plan: starter
+    branch: main
+    autoDeploy: true
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    envVars:
+      - key: MODEL_HOSTPORT
+        fromService:
+          type: pserv
+          name: blunderprint-model
+          property: hostport
+      - key: DATABASE_URL
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: DEMO_MODE
+        value: "true"
+      - key: WORKERS_COUNT
+        value: "1"
+      - key: JAVA_OPTS
+        value: "-Xmx320m -XX:+UseSerialGC"

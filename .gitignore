@@ -4,7 +4,8 @@ __pycache__/
 .venv/
 .pytest_cache/
 data/
-checkpoints/
+**/checkpoints/*
+!**/checkpoints/mlp.pt
 *.npy
 *.pgn
 *.pgn.zst

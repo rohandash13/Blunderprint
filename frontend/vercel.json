@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/players/:path*", "destination": "https://blunderprint-api.onrender.com/players/:path*" },
+    { "source": "/engine/:path*", "destination": "https://blunderprint-api.onrender.com/engine/:path*" },
+    { "source": "/voice/:path*", "destination": "https://blunderprint-api.onrender.com/voice/:path*" }
+  ]
+}
