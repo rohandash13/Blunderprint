@@ -22,8 +22,8 @@ const REPORT: Report = {
       count: 5,
       avgCpl: 412.6,
       examples: [
-        { gameId: "g1", ply: 0, fen: START, played: "g1h3", best: "e2e4", cpl: 300, pPlayed: 0.214, pv: ["e2e4", "e7e5", "g1f3"], pBest: 0.3, level: "tricky", harderThanPercent: 40 },
-        { gameId: "g2", ply: 1, fen: AFTER_E4, played: "g8h6", best: "e7e5", cpl: 250, pPlayed: 0.18, pv: [], pBest: 0.05, level: "deep", harderThanPercent: 90 },
+        { gameId: "g1", ply: 0, fen: START, played: "g1h3", best: "e2e4", cpl: 300, pPlayed: 0.214, pv: ["e2e4", "e7e5", "g1f3"], level: "tricky", kind: "tactical", severity: "mistake", difficultyElo: 1500 },
+        { gameId: "g2", ply: 1, fen: AFTER_E4, played: "g8h6", best: "e7e5", cpl: 250, pPlayed: 0.18, pv: [], level: "deep", kind: "positional", severity: "blunder", difficultyElo: 2100 },
       ],
     },
     { tag: "other", count: 2, avgCpl: 100, examples: [] },
@@ -84,6 +84,8 @@ describe("report and show_mistake", () => {
       avgCpl: 413,
       examples: 2,
       level: "tricky",
+      kind: "tactical",
+      difficultyNote: "a tactic a few moves deep",
     });
     expect(r.patterns[1].named).toBe(false);
     expect(r.patterns[1].description).toContain("Uncategorized middlegame mistakes");
@@ -108,7 +110,7 @@ describe("report and show_mistake", () => {
     const r = await call("show_mistake", { tag: "hanging_piece", index: 1 }, newCoachState(), e.fx);
     expect(e.shown).toEqual([{ fen: AFTER_E4, arrows: [["g8", "h6", PLAYED], ["e7", "e5", BEST]] }]);
     expect(r).toEqual({
-      moveNumber: 1, side: "Black", playedSpoken: "knight to h6", bestSpoken: "pawn to e5", cpl: 250, pPlayed: 0.18, level: "deep", harderThanPercent: 90,
+      moveNumber: 1, side: "Black", playedSpoken: "knight to h6", bestSpoken: "pawn to e5", cpl: 250, pPlayed: 0.18, level: "deep", kind: "positional", difficultyNote: "a quiet positional move, the kind that's hard to find even at your level",
     });
   });
 
@@ -129,7 +131,7 @@ describe("start_drill and play_move", () => {
     const s = newCoachState();
     const e = effects();
     const ready = await call("start_drill", { tag: "hanging_piece" }, s, e.fx);
-    expect(ready).toEqual({ status: "Position ready, White to move", side: "White", moveNumber: 1, level: "tricky", harderThanPercent: 40 });
+    expect(ready).toEqual({ status: "Position ready, White to move", side: "White", moveNumber: 1, level: "tricky", kind: "tactical", difficultyNote: "a tactic a few moves deep" });
     expect(JSON.stringify(ready)).not.toContain("e4");
     expect(e.shown).toEqual([{ fen: START, arrows: undefined }]);
     expect(s.drill).toMatchObject({ tag: "hanging_piece", attempts: 0, hintsGiven: 0, solved: false, revealed: false, exploreFen: START });
@@ -185,7 +187,7 @@ describe("start_drill and play_move", () => {
     await call("start_drill", { tag: "hanging_piece" }, s, e.fx);
     await call("play_move", { move: "e4" }, s, e.fx);
     const next = await call("start_drill", { tag: "hanging_piece" }, s, e.fx);
-    expect(next).toEqual({ status: "Position ready, Black to move", side: "Black", moveNumber: 1, level: "deep", harderThanPercent: 90 });
+    expect(next).toEqual({ status: "Position ready, Black to move", side: "Black", moveNumber: 1, level: "deep", kind: "positional", difficultyNote: "a quiet positional move, the kind that's hard to find even at your level" });
   });
 });
 
@@ -399,7 +401,7 @@ describe("playout", () => {
 });
 
 describe("levels", () => {
-  it("get_report passes the active levels and returns counts; examples expose level and harderThanPercent", async () => {
+  it("get_report passes the active levels and returns counts; examples expose level, kind and a note, never numbers", async () => {
     const s = newCoachState();
     const { fx, of } = effects();
     const r = await call("get_report", {}, s, fx);
@@ -408,7 +410,18 @@ describe("levels", () => {
     expect(r.levelCounts.deep).toBe(2);
     const shown = await call("show_mistake", { tag: "hanging_piece", index: 1 }, s, fx);
     expect(shown.level).toBe("deep");
-    expect(shown.harderThanPercent).toBe(90);
+    expect(shown.kind).toBe("positional");
+    expect(shown.difficultyNote).toBe("a quiet positional move, the kind that's hard to find even at your level");
+    const drill = await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    for (const out of [r, shown, drill]) {
+      const j = JSON.stringify(out);
+      expect(j).not.toContain("difficultyElo");
+      expect(j).not.toContain("harderThan");
+      expect(j).not.toContain("pBest");
+      expect(j).not.toMatch(/\d%/);
+    }
+    expect(r.patterns[0]).toMatchObject({ level: "tricky", kind: "tactical", difficultyNote: "a tactic a few moves deep" });
+    expect(r.patterns[1].kind).toBeNull();
   });
 
   it("set_levels validates, updates the chips and refetches", async () => {

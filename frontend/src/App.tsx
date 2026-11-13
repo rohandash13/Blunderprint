@@ -417,7 +417,7 @@ export default function App() {
                         <td>{Math.round(p.avgCpl)} cp</td>
                         <td>
                           {p.examples[0]
-                            ? `${LEVEL_NAMES[p.examples[0].level] ?? "—"}${p.examples[0].harderThanPercent == null ? "" : ` · harder than ${p.examples[0].harderThanPercent}% of your mistakes`}`
+                            ? `${LEVEL_NAMES[p.examples[0].level] ?? "—"} · ${p.examples[0].kind}`
                             : "—"}
                         </td>
                         <td>{p.examples.length}</td>

@@ -5,6 +5,7 @@ import { judge, sameMove, uciOf } from "../chess/verdict";
 import { describeEval } from "../chess/evalText";
 import { hintLadder } from "./hints";
 import type { StepDirection } from "./lineHistory";
+import { difficultyNote } from "./difficultyNote";
 import type { Example, Level, Report } from "../types";
 
 /** [fromSquare, toSquare, cssColor] */
@@ -273,6 +274,8 @@ export async function handleFunctionCall(
         avgCpl: Math.round(p.avgCpl),
         examples: p.examples.length,
         level: p.examples[0]?.level ?? null,
+        kind: p.examples[0]?.kind ?? null,
+        difficultyNote: p.examples[0] ? difficultyNote(p.examples[0].level, p.examples[0].kind) : null,
       })),
     };
   }
@@ -296,7 +299,8 @@ export async function handleFunctionCall(
       cpl: ex.cpl,
       pPlayed: Math.round(ex.pPlayed * 100) / 100,
       level: ex.level,
-      harderThanPercent: ex.harderThanPercent ?? null,
+      kind: ex.kind,
+      difficultyNote: difficultyNote(ex.level, ex.kind),
     };
   }
 
@@ -312,7 +316,8 @@ export async function handleFunctionCall(
     side: side(ex.fen),
     moveNumber: moveNumber(ex.fen),
     level: ex.level,
-    harderThanPercent: ex.harderThanPercent ?? null,
+    kind: ex.kind,
+    difficultyNote: difficultyNote(ex.level, ex.kind),
   };
 }
 

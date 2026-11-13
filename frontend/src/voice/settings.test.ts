@@ -22,9 +22,13 @@ describe("buildSettings", () => {
   it("declares the coach functions and names the player in the prompt", () => {
     expect(s.agent.think.functions.map((f: { name: string }) => f.name)).toEqual(["get_report", "show_mistake", "start_drill", "play_move", "get_hint", "reveal_answer", "explain_line", "try_move", "reset_position", "set_levels", "step_line"]);
     expect(s.agent.think.prompt).toContain("alice");
-    for (const w of ["play_move", "get_hint", "explain_line", "try_move", "spoken", "uncategorized middlegame mistakes", "attacks two pieces", "engineLine", "evalSpoken", "materialForYou", "set_levels", "step_line", "harderThanPercent"]) {
+    for (const w of ["play_move", "get_hint", "explain_line", "try_move", "spoken", "uncategorized middlegame mistakes", "attacks two pieces", "engineLine", "evalSpoken", "materialForYou", "set_levels", "step_line"]) {
       expect(s.agent.think.prompt).toContain(w);
     }
+    expect(s.agent.think.prompt).not.toContain("harderThanPercent");
+    expect(s.agent.think.prompt).toContain("difficultyNote");
+    expect(s.agent.think.prompt).toContain("never percentages or ratings");
+    expect(s.agent.think.prompt).toContain("alternate positional and tactical");
     expect(typeof s.agent.greeting).toBe("string");
   });
 
