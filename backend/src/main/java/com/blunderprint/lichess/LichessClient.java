@@ -22,7 +22,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class LichessClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private final HttpClient http = HttpClient.newHttpClient();
+    private final HttpClient http = HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(2)).build();
+    private final java.util.function.LongSupplier now;
     private final String baseUrl;
     private final String token;
     private final Map<String, CachedUser> userCache = new ConcurrentHashMap<>();
@@ -30,14 +31,22 @@ public class LichessClient {
     /** One rating category from the public user API. */
     public record Perf(int rating, int games, int prog) {}
 
+    /** perfs == null is a negative entry (Lichess failed), kept briefly so an outage costs one wait a minute. */
     private record CachedUser(Map<String, Perf> perfs, long atMs) {}
 
     private static final long USER_TTL_MS = 10 * 60 * 1000L;
+    private static final long FAILURE_TTL_MS = 60 * 1000L;
     private static final List<String> PERF_KEYS = List.of("bullet", "blitz", "rapid", "classical");
 
+    @org.springframework.beans.factory.annotation.Autowired
     public LichessClient(@Value("${lichess.base-url}") String baseUrl, @Value("${lichess.token:}") String token) {
+        this(baseUrl, token, System::currentTimeMillis);
+    }
+
+    LichessClient(String baseUrl, String token, java.util.function.LongSupplier now) {
         this.baseUrl = baseUrl;
         this.token = token;
+        this.now = now;
     }
 
     public List<LichessGame> fetchGames(String username, int max) {
@@ -69,19 +78,24 @@ public class LichessClient {
      */
     public Map<String, Perf> fetchUser(String username) {
         String key = username.toLowerCase(java.util.Locale.ROOT);
+        long t = now.getAsLong();
         CachedUser c = userCache.get(key);
-        if (c != null && System.currentTimeMillis() - c.atMs() < USER_TTL_MS) return c.perfs();
+        if (c != null && t - c.atMs() < (c.perfs() == null ? FAILURE_TTL_MS : USER_TTL_MS)) return c.perfs();
+        Map<String, Perf> perfs = load(username);
+        userCache.values().removeIf(u -> t - u.atMs() >= (u.perfs() == null ? FAILURE_TTL_MS : USER_TTL_MS));
+        userCache.put(key, new CachedUser(perfs, t));
+        return perfs;
+    }
+
+    private Map<String, Perf> load(String username) {
         try {
             HttpRequest.Builder rb = HttpRequest.newBuilder(
                     URI.create(baseUrl + "/api/user/" + URLEncoder.encode(username, StandardCharsets.UTF_8)))
                 .header("Accept", "application/json").header("User-Agent", "blunderprint/0.1")
-                .timeout(java.time.Duration.ofSeconds(8));
+                .timeout(java.time.Duration.ofSeconds(3));
             if (!token.isBlank()) rb.header("Authorization", "Bearer " + token);
             HttpResponse<String> resp = http.send(rb.build(), HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() != 200) return null;
-            Map<String, Perf> perfs = parseUser(resp.body());
-            userCache.put(key, new CachedUser(perfs, System.currentTimeMillis()));
-            return perfs;
+            return resp.statusCode() == 200 ? parseUser(resp.body()) : null;
         } catch (IOException | RuntimeException e) {
             return null;
         } catch (InterruptedException e) {

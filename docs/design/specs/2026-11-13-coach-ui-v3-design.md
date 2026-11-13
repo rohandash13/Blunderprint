@@ -57,7 +57,7 @@ Steps live in a felt-green left rail; at 390 px the rail becomes a top bar. Step
   (`/api/user/{u}`), cached for 10 minutes; null on failure, so the profile still renders.
 - `analyzed`: `{games, moves, from, to}`.
 - `record`: `{white: {w, d, l}, black: {w, d, l}}` from `game.result` and the player's colour.
-- `phases`: candidate-mistake rate per 100 of the player's moves in opening (ply ≤ 20), middlegame and endgame
+- `phases`: candidate-mistake rate per 100 of the player's moves in opening (ply < 20, i.e. fullmove ≤ 10, the tagger's rule), middlegame and endgame
   (≤ 4 non-pawn non-king pieces, the tagger's rule).
 - `kinds`: `{positional, tactical}` counts over candidates.
 - `clock`: `{underThirtyShare, mistakeRateUnder30, mistakeRateOver30}`.

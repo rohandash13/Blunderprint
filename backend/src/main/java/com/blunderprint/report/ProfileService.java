@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class ProfileService {
     static final int GRID_GAMES = 40;
-    static final int OPENING_MAX_PLY = 20;
+    static final int OPENING_PLIES = 20;
     static final int ENDGAME_MAX_PIECES = 4;
     static final int UNDER_THIRTY_CS = 3000;
 
@@ -52,7 +52,7 @@ public class ProfileService {
     }
 
     static String phase(int ply, String fen) {
-        if (ply <= OPENING_MAX_PLY) return "opening";
+        if (ply < OPENING_PLIES) return "opening";
         return nonPawnPieces(fen) <= ENDGAME_MAX_PIECES ? "endgame" : "middlegame";
     }
 
@@ -77,14 +77,17 @@ public class ProfileService {
         UUID run = maybe.get();
 
         List<Row> rows = jdbc.query("""
-            select m.game_id, m.ply, m.before_fen, m.clock_cs, a.tags, a.win_drop, a.best_quiet,
-                   coalesce(%s, false) as cand, %s as level, g.played_at, g.white, g.result
+            select m.game_id, m.ply, m.before_fen, m.clock_cs, a.tags, a.win_drop, a.best_quiet, g.black,
+                   coalesce(%s, false) as cand, %s as level, g.played_at, g.white, g.result, m.mover
             from move m join move_analysis a on a.move_id = m.id join game g on g.id = m.game_id
             where m.run_id = ?
             order by g.played_at, m.game_id, m.ply
             """.formatted("(" + Severity.CANDIDATE_SQL + ")", reports.levelSql()), (rs, i) -> {
                 Timestamp t = rs.getTimestamp("played_at");
-                String color = username.equalsIgnoreCase(rs.getString("white")) ? "white" : "black";
+                String white = rs.getString("white");
+                String color = username.equalsIgnoreCase(white) ? "white"
+                    : username.equalsIgnoreCase(rs.getString("black")) ? "black"
+                    : "w".equals(rs.getString("mover")) ? "white" : "black";
                 Double wd = (Double) rs.getObject("win_drop");
                 return new Row(rs.getString("game_id"), rs.getInt("ply"), rs.getString("before_fen"),
                     (Integer) rs.getObject("clock_cs"), rs.getBoolean("cand"),
@@ -135,6 +138,7 @@ public class ProfileService {
         // Grid: the 40 most recent analyzed games, oldest to newest; candidates only, primary pattern.
         List<List<Row>> games = new ArrayList<>(byGame.values());
         List<GridGame> grid = new ArrayList<>();
+        games.removeIf(g -> g.get(0).playedAt() == null);   // undated games cannot be placed in the timeline
         for (List<Row> g : games.subList(Math.max(0, games.size() - GRID_GAMES), games.size())) {
             Row f = g.get(0);
             List<Mark> marks = g.stream().filter(Row::candidate)

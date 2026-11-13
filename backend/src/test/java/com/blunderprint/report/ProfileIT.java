@@ -207,4 +207,58 @@ class ProfileIT extends PostgresIT {
         mvc.perform(get("/players/Alice/positions/nope/2")).andExpect(status().isNotFound());
         mvc.perform(get("/players/nobody/positions/g1/2")).andExpect(status().isNotFound());
     }
+
+    static final String FIVE = "rn2k2r/pp3ppp/8/8/8/8/PP3PPP/R3K2R w KQkq - 0 40";              // 5 non-pawn non-king
+
+    @Test
+    void phaseBoundaries() throws Exception {
+        game("g1", "alice", "x", "1-0", "2026-01-01T00:00:00Z");
+        move("g1", 19, "b", START, null, 0.20, false, "{}", 1500);     // last opening ply (fullmove 10)
+        move("g1", 20, "w", FIVE, null, 0.20, false, "{}", 1500);      // first non-opening ply, 5 pieces: middlegame
+        move("g1", 22, "w", FIVE, null, 0.01, false, "{}", 1500);
+        move("g1", 24, "w", END, null, 0.20, false, "{}", 1500);       // 4 pieces: endgame
+        move("g1", 26, "w", END, null, 0.01, false, "{}", 1500);
+        move("g1", 28, "w", END, null, 0.01, false, "{}", 1500);
+        move("g1", 30, "w", END, null, 0.01, false, "{}", 1500);
+        mvc.perform(get("/players/Alice/profile")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.phases.opening").value(100.0))
+            .andExpect(jsonPath("$.phases.middlegame").value(50.0))
+            .andExpect(jsonPath("$.phases.endgame").value(25.0));
+    }
+
+    @Test
+    void undatedGamesStayOutOfTheGrid() throws Exception {
+        game("g1", "alice", "x", "1-0", "2026-01-01T00:00:00Z");
+        jdbc.update("insert into game(id, white, black, result, played_at) values ('g2', 'alice', 'x', '1-0', null)");
+        move("g1", 0, "w", START, null, 0.01, false, "{}", 1500);
+        move("g2", 0, "w", START, null, 0.01, false, "{}", 1500);
+        mvc.perform(get("/players/Alice/profile")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.grid.length()").value(1))
+            .andExpect(jsonPath("$.grid[0].gameId").value("g1"));
+    }
+
+    @Test
+    void colourFallsBackToMoverWhenNameMatchesNeitherSide() throws Exception {
+        game("g1", "p1", "p2", "0-1", "2026-01-01T00:00:00Z");
+        move("g1", 1, "b", START, null, 0.01, false, "{}", 1500);
+        mvc.perform(get("/players/Alice/profile")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.grid[0].color").value("black"))
+            .andExpect(jsonPath("$.grid[0].result").value("w"))
+            .andExpect(jsonPath("$.record.black.w").value(1));
+    }
+
+    @Test
+    void positionIsScopedToThePlayersOwnRun() throws Exception {
+        game("g1", "alice", "x", "1-0", "2026-01-01T00:00:00Z");
+        game("g2", "bob", "x", "1-0", "2026-01-01T00:00:00Z");
+        move("g1", 2, "w", START, null, 0.20, false, "{missed_tactic}", 1500);
+        UUID alice = run;
+        run = UUID.randomUUID();
+        jdbc.update("insert into analysis_run(id, username, engine, depth, status) values (?, 'Bob', 'sf', 10, 'DONE')", run);
+        move("g2", 4, "w", START, null, 0.20, false, "{missed_tactic}", 1500);
+        mvc.perform(get("/players/Bob/positions/g2/4")).andExpect(status().isOk());
+        mvc.perform(get("/players/Alice/positions/g2/4")).andExpect(status().isNotFound());
+        mvc.perform(get("/players/Bob/positions/g1/2")).andExpect(status().isNotFound());
+        mvc.perform(get("/players/Alice/positions/g1/2")).andExpect(status().isOk());
+    }
 }
