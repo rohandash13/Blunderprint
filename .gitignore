@@ -15,3 +15,12 @@ data/
 
 # Local secrets
 .env
+
+# local Claude/impeccable state
+.claude/settings.local.json
+.impeccable/questions/
+.impeccable/mocks/
+.impeccable/review/
+.impeccable/config.local.json
+frontend/vite.config.ts.timestamp-*
+.claude/skills/impeccable/scripts/bin/
