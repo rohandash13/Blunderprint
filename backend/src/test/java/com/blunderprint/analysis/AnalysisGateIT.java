@@ -85,6 +85,18 @@ class AnalysisGateIT extends PostgresIT {
     }
 
     @Test
+    void playerStatusSkipsStaleUnfinishedRuns() {
+        var g = gate();
+        run("zed", "RUNNING", now.minusSeconds(7 * 3600));
+        assertEquals("none", g.playerStatus("zed").status());
+        UUID done = run("zed", "DONE", now.minusSeconds(9 * 3600));
+        run("zed", "SCORING", now.minusSeconds(8 * 3600));
+        var s = g.playerStatus("zed");
+        assertEquals("DONE", s.status());
+        assertEquals(done, s.runId());
+    }
+
+    @Test
     void finishedRunHasQueuePositionZero() {
         run("a", "RUNNING", now.minusSeconds(300));
         UUID d = run("d", "DONE", now.minusSeconds(100));

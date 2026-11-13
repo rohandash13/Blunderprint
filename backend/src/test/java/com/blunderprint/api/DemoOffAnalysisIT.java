@@ -18,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 @AutoConfigureMockMvc
+@org.springframework.test.context.TestPropertySource(properties = "DEMO_MODE=false")
 class DemoOffAnalysisIT extends PostgresIT {
     @Autowired MockMvc mvc;
     @MockBean IngestService ingest;

@@ -130,24 +130,26 @@ public class AnalysisGate {
     }
 
     public int queuePosition(UUID runId) {
-        return queuePosition(jdbc, runId);
+        return queuePosition(jdbc, runId, clock.instant());
     }
 
     /** Non-finished runs created before this one that are still RUNNING/SCORING; 0 when this run is not queued. */
-    public static int queuePosition(JdbcTemplate jdbc, UUID runId) {
+    public static int queuePosition(JdbcTemplate jdbc, UUID runId, java.time.Instant now) {
         Integer n = jdbc.queryForObject("""
             select count(*) from analysis_run o, analysis_run r
             where r.id = ? and r.status in ('RUNNING','SCORING')
               and o.status in ('RUNNING','SCORING') and o.created_at < r.created_at
-              and o.created_at > now() - interval '6 hours'
-            """, Integer.class, runId);
+              and o.created_at > ?
+            """, Integer.class, runId, Timestamp.from(now.minus(STALE)));
         return n == null ? 0 : n;
     }
 
     public PlayerStatus playerStatus(String username) {
         var rows = jdbc.queryForList("""
-            select id, status from analysis_run where lower(username) = lower(?) order by created_at desc limit 1
-            """, username);
+            select id, status from analysis_run
+            where lower(username) = lower(?) and (status in ('DONE','FAILED') or created_at > ?)
+            order by created_at desc limit 1
+            """, username, Timestamp.from(clock.instant().minus(STALE)));
         if (rows.isEmpty()) return new PlayerStatus("none", null, 0);
         UUID id = (UUID) rows.get(0).get("id");
         return new PlayerStatus((String) rows.get(0).get("status"), id, queuePosition(id));

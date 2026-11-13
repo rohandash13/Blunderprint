@@ -135,7 +135,7 @@ public class AnalysisController {
         try {
             var res = ingest.ingest(username, max, depth);
             return ResponseEntity.accepted().body(new StartResponse(res.runId(), res.games(), res.moves(),
-                res.jobsEnqueued(), false, AnalysisGate.queuePosition(jdbc, res.runId())));
+                res.jobsEnqueued(), false, gate.queuePosition(res.runId())));
         } catch (NoRatedGamesException e) {
             if (slot != null) {
                 gate.release(slot);

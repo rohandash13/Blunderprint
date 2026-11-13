@@ -39,9 +39,11 @@ public class AnalysisService {
 
     private final EngineTracer tracer;
     private final double minPPlayed;
+    private final java.time.Clock clock;
 
     public AnalysisService(JdbcTemplate jdbc, ModelClient model, EngineTracer tracer,
-                           @Value("${report.min-p-played}") double minPPlayed) {
+                           @Value("${report.min-p-played}") double minPPlayed, java.time.Clock clock) {
+        this.clock = clock;
         this.jdbc = jdbc;
         this.model = model;
         this.tracer = tracer;
@@ -63,7 +65,7 @@ public class AnalysisService {
             """, runId, runId, runId);
         return new Progress(status, ((Number) row.get("total")).longValue(),
             ((Number) row.get("done")).longValue(), ((Number) row.get("failed")).longValue(),
-            AnalysisGate.queuePosition(jdbc, runId));
+            AnalysisGate.queuePosition(jdbc, runId, clock.instant()));
     }
 
     @Scheduled(fixedDelay = 2000)
