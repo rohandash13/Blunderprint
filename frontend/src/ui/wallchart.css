@@ -1,5 +1,14 @@
 /* Blunderprint coach: one stylesheet, tokens first. */
 
+/* Archivo v25, latin variable weights, OFL-1.1; see public/fonts/OFL.txt. */
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/archivo-latin-wght-normal.woff2") format("woff2");
+}
+
 :root {
   /* shell */
   --felt: #1f4d3a;
@@ -1615,6 +1624,10 @@ input {
   margin-top: 0;
 }
 
+.focus-head .levels {
+  justify-content: flex-end;
+}
+
 /* plates are whole cells wide; every line inside is one cell tall */
 .plates {
   display: grid;
@@ -1934,6 +1947,7 @@ input {
 @media (max-width: 760px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
   }
 
   .rail {
@@ -2250,6 +2264,15 @@ input {
     flex: 1 1 0;
     justify-content: center;
     min-width: 0;
+  }
+
+  .focus {
+    max-width: none;
+    width: 100%;
+  }
+
+  .focus-head .levels {
+    justify-content: flex-start;
   }
 
   .plates {

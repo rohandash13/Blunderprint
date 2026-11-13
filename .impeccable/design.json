@@ -1,0 +1,13 @@
+{
+  "direction": "Club Wallchart",
+  "surface": "frontend-src-app-tsx",
+  "contract": ".impeccable/surfaces/frontend-src-app-tsx.md",
+  "documentation": "DESIGN.md",
+  "implementation": "frontend/src/ui/wallchart.css",
+  "review": "docs/design/reviews/2026-11-13-coach-ui-v3.md",
+  "palette": {"felt":"#1f4d3a","paper":"#fcfdfd","ink":"#1a1a1a","marker":"#d7263d","highlighter":"#f2d94e"},
+  "font": "Archivo",
+  "cellPx": 24,
+  "railPx": 220,
+  "mobileBreakpointPx": 760
+}
