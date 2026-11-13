@@ -9,22 +9,43 @@ import org.springframework.stereotype.Service;
 @Service
 public class ReportService {
     public record Example(String gameId, int ply, String fen, String played, String best, int cpl, double pPlayed,
-                           List<String> pv, Double pBest, String level, Integer harderThanPercent) {}
+                           List<String> pv, String level, String kind, String severity, Integer difficultyElo) {}
     public record PatternSummary(String tag, int count, double avgCpl, List<Example> examples) {}
     public record Report(String username, UUID runId, int movesAnalyzed, int mistakes, int candidates,
                          List<PatternSummary> patterns, List<String> levels, Map<String, Integer> levelCounts) {}
     public record MistakeRow(String gameId, long playedAtEpochSec, int ply, int cpl, Double pPlayed, List<String> tags,
-                             Double pBest, String level, Integer harderThanPercent) {}
+                             Double pBest, Double winDrop, String kind, String severity, Integer difficultyElo,
+                             String level) {}
+
+    /** Primary-pattern priority: a move is listed under the first of these it carries. */
+    static final List<String> PATTERN_PRIORITY = List.of("time_trouble", "missed_tactic", "hanging_piece",
+        "positional", "endgame_technique", "opening_error");
+    static final String OTHER = "other";
+    static final double INACCURACY = 0.05, MISTAKE = 0.10, BLUNDER = 0.15;
 
     private final JdbcTemplate jdbc;
-    private final int mistakeCpl;
     private final double minP;
+    private final Difficulty difficulty;
 
-    public ReportService(JdbcTemplate jdbc, @Value("${report.mistake-cpl}") int mistakeCpl,
-                         @Value("${report.min-p-played}") double minP) {
+    public ReportService(JdbcTemplate jdbc, @Value("${report.min-p-played}") double minP,
+                         @Value("${report.levels.slip-below:300}") int slipBelow,
+                         @Value("${report.levels.deep-above:100}") int deepAbove) {
         this.jdbc = jdbc;
-        this.mistakeCpl = mistakeCpl;
         this.minP = minP;
+        this.difficulty = new Difficulty(slipBelow, deepAbove);
+    }
+
+    static String primaryPattern(List<String> tags) {
+        for (String t : PATTERN_PRIORITY) if (tags.contains(t)) return t;
+        return OTHER;
+    }
+
+    static String severity(double winDrop) {
+        return winDrop >= BLUNDER ? "blunder" : winDrop >= MISTAKE ? "mistake" : "inaccuracy";
+    }
+
+    private static String kind(Boolean bestQuiet) {
+        return Boolean.TRUE.equals(bestQuiet) ? "positional" : "tactical";
     }
 
     private Optional<UUID> latestDoneRun(String username) {
@@ -34,18 +55,18 @@ public class ReportService {
         return ids.stream().findFirst();
     }
 
-    private Difficulty difficultyFor(UUID run) {
-        List<Double> pBest = jdbc.queryForList("""
-            select a.p_best from move m join move_analysis a on a.move_id = m.id
-            where m.run_id = ? and a.cpl >= ? and a.p_played >= ? and a.p_best is not null""",
-            Double.class, run, mistakeCpl, minP);
-        return Difficulty.relative(pBest);
-    }
-
     private static List<String> splitPv(String pv) {
         if (pv == null || pv.isBlank()) return List.of();
         return List.of(pv.trim().split("\\s+"));
     }
+
+    private static List<String> tagsOf(java.sql.ResultSet rs) throws java.sql.SQLException {
+        Array arr = rs.getArray("tags");
+        return arr == null ? List.of() : Arrays.asList((String[]) arr.getArray());
+    }
+
+    /** One candidate move with its primary pattern, ready for filtering. */
+    private record Cand(String tag, String level, Example example) {}
 
     public Optional<Report> report(String username) {
         return report(username, Difficulty.DEFAULT);
@@ -55,60 +76,61 @@ public class ReportService {
         Optional<UUID> maybe = latestDoneRun(username);
         if (maybe.isEmpty()) return Optional.empty();
         UUID run = maybe.get();
-        Difficulty difficulty = difficultyFor(run);
         var counts = jdbc.queryForMap("""
             select count(*) moves,
-                   count(*) filter (where a.cpl >= ?) mistakes,
-                   count(*) filter (where a.cpl >= ? and a.p_played >= ?) candidates
+                   count(*) filter (where a.win_drop >= ?) mistakes,
+                   count(*) filter (where a.win_drop >= ? and a.p_played >= ? and (a.win_drop >= ? or a.best_quiet)) candidates
             from move m join move_analysis a on a.move_id = m.id where m.run_id = ?
-            """, mistakeCpl, mistakeCpl, minP, run);
+            """, MISTAKE, INACCURACY, minP, MISTAKE, run);
 
-        String lvl = Difficulty.sqlLevel("a.p_best");
-        Map<String, Integer> levelCounts = new LinkedHashMap<>();
-        for (String l : Difficulty.ALL) levelCounts.put(l, 0);
-        jdbc.query("select " + lvl + " as level, count(*) n from move m join move_analysis a on a.move_id = m.id "
-                + "where m.run_id = ? and a.cpl >= ? and a.p_played >= ? group by 1",
-            rs -> { levelCounts.put(rs.getString("level"), rs.getInt("n")); },
-            difficulty.slipMin(), difficulty.deepMax(), run, mistakeCpl, minP);
-
-        String in = String.join(",", Collections.nCopies(levels.size() + (difficulty.empty() && !levels.contains("unrated") ? 1 : 0), "?"));
-        List<Object> params = new ArrayList<>(List.of(difficulty.slipMin(), difficulty.deepMax(), run, mistakeCpl, minP,
-            difficulty.slipMin(), difficulty.deepMax()));
-        // Without any rated candidate there are no levels to filter by, so unrated rows are shown rather than nothing.
-        List<String> effective = new ArrayList<>(levels);
-        if (difficulty.empty() && !effective.contains("unrated")) effective.add("unrated");
-        params.addAll(effective);
-
-        Map<String, List<Example>> byTag = new LinkedHashMap<>();
-        Map<String, double[]> stats = new HashMap<>();     // tag -> [count, sumCpl]
-        jdbc.query("""
-            select tag, m.game_id, m.ply, m.before_fen, m.played_uci, a.best_uci, a.cpl, a.p_played, a.p_best, c.pv,
-                   %s as level
+        String lvl = difficulty.sqlLevel("a.difficulty_elo", "m.rating");
+        List<Cand> cands = jdbc.query("""
+            select m.game_id, m.ply, m.before_fen, m.played_uci, a.best_uci, a.cpl, a.p_played, a.tags, a.win_drop,
+                   a.best_quiet, a.difficulty_elo, c.pv, %s as level
             from move m join move_analysis a on a.move_id = m.id
             join analysis_run r on r.id = m.run_id
             left join eval_cache c on c.fen_key = m.before_key and c.engine = r.engine
-                                  and c.depth = r.depth and c.multipv = 1,
-                 unnest(a.tags) as tag
-            where m.run_id = ? and a.cpl >= ? and a.p_played >= ? and %s in (%s)
-            order by a.cpl * (1 - coalesce(a.p_best, 0.5)) desc, a.cpl desc, m.game_id, m.ply
-            """.formatted(lvl, lvl, in), rs -> {
-                String tag = rs.getString("tag");
-                stats.computeIfAbsent(tag, t -> new double[2]);
-                stats.get(tag)[0] += 1;
-                stats.get(tag)[1] += rs.getInt("cpl");
-                List<Example> ex = byTag.computeIfAbsent(tag, t -> new ArrayList<>());
-                if (ex.size() < 3) {
-                    ex.add(new Example(rs.getString("game_id"), rs.getInt("ply"), rs.getString("before_fen"),
-                        rs.getString("played_uci"), rs.getString("best_uci"), rs.getInt("cpl"), rs.getDouble("p_played"),
-                        splitPv(rs.getString("pv")), (Double) rs.getObject("p_best"), rs.getString("level"),
-                        difficulty.harderThanPercent((Double) rs.getObject("p_best"))));
-                }
-            }, params.toArray());
+                                  and c.depth = r.depth and c.multipv = 1
+            where m.run_id = ? and a.win_drop >= ? and a.p_played >= ? and (a.win_drop >= ? or a.best_quiet)
+            order by a.win_drop desc, m.game_id, m.ply
+            """.formatted(lvl), (rs, i) -> {
+                double wd = rs.getDouble("win_drop");
+                String level = rs.getString("level");
+                Integer elo = (Integer) rs.getObject("difficulty_elo");
+                Example ex = new Example(rs.getString("game_id"), rs.getInt("ply"), rs.getString("before_fen"),
+                    rs.getString("played_uci"), rs.getString("best_uci"), rs.getInt("cpl"), rs.getDouble("p_played"),
+                    splitPv(rs.getString("pv")), level, kind((Boolean) rs.getObject("best_quiet")), severity(wd), elo);
+                return new Cand(primaryPattern(tagsOf(rs)), level, ex);
+            }, run, INACCURACY, minP, MISTAKE);
+
+        Map<String, Integer> levelCounts = new LinkedHashMap<>();
+        for (String l : Difficulty.ALL) levelCounts.put(l, 0);
+        for (Cand c : cands) levelCounts.merge(c.level(), 1, Integer::sum);
+
+        // When no candidate in the run has an estimate yet, show unrated ones rather than nothing.
+        List<String> effective = new ArrayList<>(levels);
+        boolean allUnrated = !cands.isEmpty() && levelCounts.get("unrated") == cands.size();
+        if (allUnrated && !effective.contains("unrated")) effective.add("unrated");
+        boolean clockExamples = effective.contains("slip");
+
+        Map<String, List<Example>> examples = new LinkedHashMap<>();
+        Map<String, double[]> stats = new HashMap<>();     // tag -> [count, sumCpl]
+        for (Cand c : cands) {                              // already ordered by win_drop desc, game, ply
+            boolean clock = c.tag().equals("time_trouble");
+            // Clock errors always count toward their pattern; other patterns follow the level filter.
+            if (!clock && !effective.contains(c.level())) continue;
+            double[] st = stats.computeIfAbsent(c.tag(), t -> new double[2]);
+            st[0] += 1;
+            st[1] += c.example().cpl();
+            List<Example> ex = examples.computeIfAbsent(c.tag(), t -> new ArrayList<>());
+            boolean eligible = !clock || (clockExamples && effective.contains(c.level()));
+            if (eligible && ex.size() < 3) ex.add(c.example());
+        }
 
         List<PatternSummary> patterns = new ArrayList<>();
         for (var e : stats.entrySet()) {
             patterns.add(new PatternSummary(e.getKey(), (int) e.getValue()[0], e.getValue()[1] / e.getValue()[0],
-                byTag.get(e.getKey())));
+                examples.get(e.getKey())));
         }
         patterns.sort(Comparator.comparingInt(PatternSummary::count).reversed()
             .thenComparing(Comparator.comparingDouble(PatternSummary::avgCpl).reversed())
@@ -119,24 +141,28 @@ public class ReportService {
     }
 
     public List<MistakeRow> mistakes(String username) {
-        return latestDoneRun(username).map(run -> mistakes(run, difficultyFor(run))).orElse(List.of());
+        return latestDoneRun(username).map(this::mistakes).orElse(List.of());
     }
 
-    private List<MistakeRow> mistakes(UUID run, Difficulty difficulty) {
+    private List<MistakeRow> mistakes(UUID run) {
         return jdbc.query("""
-            select m.game_id, extract(epoch from g.played_at)::bigint as t, m.ply, a.cpl, a.p_played, a.tags, a.p_best
+            select m.game_id, extract(epoch from g.played_at)::bigint as t, m.ply, a.cpl, a.p_played, a.tags, a.p_best,
+                   a.win_drop, a.best_quiet, a.difficulty_elo, m.rating
             from move m join move_analysis a on a.move_id = m.id join game g on g.id = m.game_id
             where m.run_id = ? order by g.played_at, m.ply
             """, (rs, i) -> {
-                Array arr = rs.getArray("tags");
-                List<String> tags = arr == null ? List.of() : Arrays.asList((String[]) arr.getArray());
                 Double pBest = (Double) rs.getObject("p_best");
                 Double pPlayed = (Double) rs.getObject("p_played");
-                int cpl = rs.getInt("cpl");
-                boolean candidate = cpl >= mistakeCpl && pPlayed != null && pPlayed >= minP;
-                return new MistakeRow(rs.getString("game_id"), rs.getLong("t"), rs.getInt("ply"), cpl,
-                    pPlayed, tags, pBest, candidate ? difficulty.level(pBest) : null,
-                    candidate ? difficulty.harderThanPercent(pBest) : null);
+                Double winDrop = (Double) rs.getObject("win_drop");
+                Boolean quiet = (Boolean) rs.getObject("best_quiet");
+                Integer elo = (Integer) rs.getObject("difficulty_elo");
+                Integer rating = (Integer) rs.getObject("rating");
+                boolean candidate = winDrop != null && winDrop >= INACCURACY && pPlayed != null && pPlayed >= minP
+                    && (winDrop >= MISTAKE || Boolean.TRUE.equals(quiet));
+                return new MistakeRow(rs.getString("game_id"), rs.getLong("t"), rs.getInt("ply"), rs.getInt("cpl"),
+                    pPlayed, tagsOf(rs), pBest, winDrop, quiet == null ? null : kind(quiet),
+                    winDrop != null && winDrop >= INACCURACY ? severity(winDrop) : null, elo,
+                    candidate ? difficulty.level(elo, rating) : null);
             }, run);
     }
 }

@@ -23,7 +23,9 @@ lichess:
 model:
   url: ${MODEL_URL:http://localhost:8000}
 report:
-  mistake-cpl: 100
+  levels:
+    slip-below: 300
+    deep-above: 100
   min-p-played: 0.15
 deepgram:
   api-key: ${DEEPGRAM_API_KEY:}
