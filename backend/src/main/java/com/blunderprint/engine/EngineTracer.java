@@ -13,9 +13,11 @@ import org.springframework.stereotype.Component;
 public class EngineTracer {
     private static final Logger log = LoggerFactory.getLogger(EngineTracer.class);
     static final int TRACE_DEPTH = 14;
+    private static final long RETRY_AFTER_MS = 60_000;
 
     private final String path;
     private StockfishEngine engine;
+    private long startFailedAtMs = -1;
 
     public EngineTracer(@Value("${engine.path}") String path) {
         this.path = path;
@@ -23,8 +25,22 @@ public class EngineTracer {
 
     public synchronized Optional<Trace> trace(String fenKey) {
         try {
-            if (engine == null) engine = new StockfishEngine(path);
+            if (engine == null) {
+                if (startFailedAtMs >= 0 && System.currentTimeMillis() - startFailedAtMs < RETRY_AFTER_MS) {
+                    return Optional.empty();
+                }
+                try {
+                    engine = new StockfishEngine(path);
+                    startFailedAtMs = -1;
+                } catch (IOException | RuntimeException e) {
+                    startFailedAtMs = System.currentTimeMillis();
+                    log.warn("Cannot start Stockfish for traces ({}); not retrying for {} s", e.toString(), RETRY_AFTER_MS / 1000);
+                    return Optional.empty();
+                }
+            }
             return Optional.of(engine.trace(fenKey, TRACE_DEPTH));
+        } catch (StockfishEngine.NoLegalMoveException e) {
+            return Optional.empty();
         } catch (IOException | RuntimeException e) {
             log.warn("Trace search failed for {}: {}", fenKey, e.toString());
             if (engine != null) { engine.close(); engine = null; }

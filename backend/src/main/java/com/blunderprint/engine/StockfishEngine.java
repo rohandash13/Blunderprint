@@ -4,6 +4,7 @@ import com.blunderprint.chess.Fen;
 import java.io.*;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.TreeMap;
 
 public class StockfishEngine implements AutoCloseable {
@@ -46,28 +47,27 @@ public class StockfishEngine implements AutoCloseable {
      * depth >= d equals the final bestmove. secondCp = last multipv-2 score at the final depth.
      */
     public Trace trace(String fenKey, int depth) throws IOException {
+        // Fresh search state so earlier searches cannot change findDepth between runs.
+        send("ucinewgame");
+        send("isready");
+        waitFor("readyok");
         send("setoption name MultiPV value 2");
         try {
             send("position fen " + Fen.forEngine(fenKey));
             send("go depth " + depth);
-            Map<Integer, String> firstMoveByDepth = new TreeMap<>();
+            NavigableMap<Integer, String> firstMoveByDepth = new TreeMap<>();
             Map<Integer, Integer> secondByDepth = new TreeMap<>();
             TreeMap<Integer, Integer> bestByDepth = new TreeMap<>();
             String line;
             while ((line = in.readLine()) != null) {
                 if (line.startsWith("bestmove")) {
                     String[] t = line.split("\\s+");
-                    if (t.length < 2 || t[1].equals("(none)")) throw new IOException("no legal move in " + fenKey);
+                    if (t.length < 2 || t[1].equals("(none)")) throw new NoLegalMoveException("no legal move in " + fenKey);
                     String best = t[1];
                     if (bestByDepth.isEmpty()) throw new IOException("no score for " + fenKey);
                     int finalDepth = bestByDepth.lastKey();
-                    int findDepth = finalDepth;
-                    for (int d = finalDepth; d >= 1; d--) {
-                        String m = firstMoveByDepth.get(d);
-                        if (m == null) continue;
-                        if (!m.equals(best)) break;
-                        findDepth = d;
-                    }
+                    int findDepth = findDepth(firstMoveByDepth, finalDepth, best);
+                    // secondCp null = single legal move, or no multipv-2 line was reported at the final depth.
                     return new Trace(best, bestByDepth.get(finalDepth), secondByDepth.get(finalDepth), findDepth);
                 }
                 var p = UciParser.parseInfoAny(line);
@@ -85,6 +85,26 @@ public class StockfishEngine implements AutoCloseable {
         } finally {
             try { send("setoption name MultiPV value 1"); } catch (IOException ignored) { }
         }
+    }
+
+    /**
+     * Smallest depth d such that the multipv-1 first move at every recorded depth >= d equals best.
+     * Depths with no recorded line are skipped; a final-depth disagreement yields finalDepth.
+     */
+    static int findDepth(NavigableMap<Integer, String> firstMoveByDepth, int finalDepth, String best) {
+        int found = finalDepth;
+        for (int d = finalDepth; d >= 1; d--) {
+            String m = firstMoveByDepth.get(d);
+            if (m == null) continue;
+            if (!m.equals(best)) break;
+            found = d;
+        }
+        return found;
+    }
+
+    /** The position is terminal (checkmate or stalemate); the engine itself is fine. */
+    public static class NoLegalMoveException extends IOException {
+        public NoLegalMoveException(String message) { super(message); }
     }
 
     private void send(String cmd) throws IOException {
