@@ -21,4 +21,10 @@ table.report tr.muted th, table.report tr.muted small { color: #888; font-weight
 .transcript { max-height: 420px; overflow-y: auto; border-top: 1px solid #ddd; margin-top: 12px; padding-top: 8px; }
 .transcript .user { color: #333; }
 .transcript .assistant { color: #0b5394; }
+.chips { display: flex; gap: 8px; margin: 8px 0 12px; flex-wrap: wrap; }
+.chip { border-radius: 999px; padding: 4px 12px; opacity: 0.55; }
+.chip.on { opacity: 1; font-weight: 600; }
+.chip span { margin-left: 4px; font-variant-numeric: tabular-nums; }
+.stepper { align-items: center; gap: 6px; }
+.stepper span { min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
 @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }

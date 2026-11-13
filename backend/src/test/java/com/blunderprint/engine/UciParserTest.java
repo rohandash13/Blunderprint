@@ -41,6 +41,27 @@ class UciParserTest {
     }
 
     @Test
+    void parseInfoAnyKeepsSecondaryPv() {
+        var i = UciParser.parseInfoAny("info depth 9 multipv 2 score cp -10 pv d2d4 d7d5").orElseThrow();
+        assertEquals(9, i.depth());
+        assertEquals(2, i.multipv());
+        assertEquals(-10, i.cp());
+        assertNull(i.mate());
+        assertEquals("d2d4 d7d5", i.pv());
+        var m = UciParser.parseInfoAny("info depth 5 score mate 1 pv a1a8").orElseThrow();
+        assertEquals(1, m.multipv());
+        assertEquals(1, m.mate());
+    }
+
+    @Test
+    void parseInfoAnyIgnoresBoundsAndNonScoreLines() {
+        assertTrue(UciParser.parseInfoAny("info depth 9 multipv 2 score cp 10 upperbound pv e2e4").isEmpty());
+        assertTrue(UciParser.parseInfoAny("info depth 9 score cp 10 lowerbound pv e2e4").isEmpty());
+        assertTrue(UciParser.parseInfoAny("info string hello").isEmpty());
+        assertTrue(UciParser.parseInfoAny("bestmove e2e4").isEmpty());
+    }
+
+    @Test
     void acceptsDepthZeroTerminalScore() {
         var i = UciParser.parseInfo("info depth 0 score mate 0").orElseThrow();
         assertEquals(-10000, UciParser.toCentipawns(i.cp(), i.mate()));

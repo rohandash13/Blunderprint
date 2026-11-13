@@ -1,14 +1,12 @@
 # Blunderprint Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Build a system that analyzes a Lichess player's games at scale (Java + Stockfish worker pool) and uses a Python human-move model to surface the mistakes that player keeps repeating, with measured performance and a validation experiment.
 
 **Architecture:** A Java (Spring Boot) service ingests games, enqueues position evaluations into a Postgres-backed queue (`FOR UPDATE SKIP LOCKED`), and a pool of worker threads (one Stockfish UCI process each) evaluates them into an evaluation cache. A Python (FastAPI + PyTorch) service predicts how likely a player at a given rating is to play each move and tags mistakes with rule-based categories. Java computes centipawn loss, asks Python for probabilities and tags, stores results, and serves a report.
 
 **Tech Stack:** Java 21, Spring Boot 3.3, JdbcTemplate, Flyway, Postgres 16, chesslib, Testcontainers; Python 3.11+, python-chess, PyTorch, FastAPI, pytest; Stockfish (external process); Docker Compose; AWS EC2 (final deploy).
 
-Spec: `docs/superpowers/specs/2026-11-08-blunderprint-design.md`
+Spec: `docs/design/specs/2026-11-08-blunderprint-design.md`
 
 ## Global Constraints
 
@@ -98,7 +96,7 @@ blunderprint/
 
 ```bash
 # repo already exists: cd into your clone of Blunderprint
-mkdir -p backend/src/main/java/com/blunderprint backend/src/main/resources/db/migration backend/src/test/java/com/blunderprint ml/src/blunderprint_ml ml/tests scripts results docs/superpowers/specs docs/superpowers/plans
+mkdir -p backend/src/main/java/com/blunderprint backend/src/main/resources/db/migration backend/src/test/java/com/blunderprint ml/src/blunderprint_ml ml/tests scripts results docs/design/specs docs/design/plans
 ```
 
 `.gitignore`:

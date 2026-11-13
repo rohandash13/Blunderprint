@@ -6,7 +6,8 @@ export const PATTERN_LABELS: Record<string, { name: string; description: string 
   opening_error: { name: "Opening mistakes", description: "Mistakes in the first 10 moves" },
   endgame_technique: { name: "Endgame technique", description: "Mistakes with few pieces left" },
   time_trouble: { name: "Time trouble", description: "Mistakes with under 30 seconds on the clock" },
-  other: { name: "Uncategorized middlegame mistakes", description: "Positional or strategic errors no rule matched" },
+  positional: { name: "Positional decisions", description: "A quiet move was best: no capture or check, just the right plan" },
+  other: { name: "Uncategorized mistakes", description: "Tactical errors no other rule matched" },
 };
 
 export function patternLabel(tag: string): { name: string; description: string } {

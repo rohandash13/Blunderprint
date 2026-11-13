@@ -1,0 +1,67 @@
+{
+  "username": "Knight_ofthelight73",
+  "candidates": 77,
+  "levels": {
+    "slip": {
+      "count": 35,
+      "share": 0.4545,
+      "avg_win_drop": 0.1616,
+      "by_kind": {
+        "positional": 24,
+        "tactical": 11
+      },
+      "by_pattern": {
+        "positional": 21,
+        "time_trouble": 5,
+        "other": 4,
+        "hanging_piece": 3,
+        "missed_tactic": 2
+      }
+    },
+    "tricky": {
+      "count": 19,
+      "share": 0.2468,
+      "avg_win_drop": 0.1222,
+      "by_kind": {
+        "positional": 16,
+        "tactical": 3
+      },
+      "by_pattern": {
+        "positional": 13,
+        "hanging_piece": 2,
+        "other": 1,
+        "missed_tactic": 1,
+        "opening_error": 1,
+        "time_trouble": 1
+      }
+    },
+    "deep": {
+      "count": 9,
+      "share": 0.1169,
+      "avg_win_drop": 0.122,
+      "by_kind": {
+        "tactical": 5,
+        "positional": 4
+      },
+      "by_pattern": {
+        "positional": 4,
+        "time_trouble": 2,
+        "endgame_technique": 1,
+        "other": 1,
+        "missed_tactic": 1
+      }
+    },
+    "unrated": {
+      "count": 14,
+      "share": 0.1818,
+      "avg_win_drop": 0.1162,
+      "by_kind": {
+        "positional": 14
+      },
+      "by_pattern": {
+        "positional": 13,
+        "hanging_piece": 1
+      }
+    }
+  }
+}

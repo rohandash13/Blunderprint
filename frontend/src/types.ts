@@ -1,3 +1,5 @@
+export type Level = "slip" | "tricky" | "deep" | "unrated";
+
 export interface Example {
   gameId: string;
   ply: number;
@@ -7,6 +9,10 @@ export interface Example {
   cpl: number;
   pPlayed: number;
   pv: string[]; // engine best line (UCI) from the position before the mistake
+  level: Level;
+  kind: "tactical" | "positional";
+  severity: "inaccuracy" | "mistake" | "blunder";
+  difficultyElo: number | null; // UI only; never given to the LLM
 }
 
 export interface Pattern {
@@ -22,5 +28,7 @@ export interface Report {
   movesAnalyzed: number;
   mistakes: number;
   candidates: number;
+  levels: Level[];
+  levelCounts: Record<Level, number>;
   patterns: Pattern[];
 }

@@ -1,14 +1,12 @@
 # Blunderprint Voice Coach Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Let a player talk to their Blunderprint report and drill their recurring mistakes by voice through Deepgram's Voice Agent API, with a script-reproducible latency measurement.
 
 **Architecture:** The Java backend mints 30-second Deepgram tokens (the API key never leaves it) and serves the report. A React + Vite + TypeScript page connects directly to Deepgram's agent WebSocket, streams mic audio, plays agent audio, and executes the agent's four client-side functions against the report. Chess judgement (legality, best move, repeated mistake) is done by chess.js and stored Stockfish data, never by the LLM.
 
 **Tech Stack:** Java 21 / Spring Boot 3.3 (existing), React 18.3, Vite 5, TypeScript 5, Vitest 2, chess.js 1.x, react-chessboard 4.x, Deepgram Voice Agent V1, Python 3.13 (latency analysis).
 
-**Spec:** `docs/superpowers/specs/2026-11-10-voice-coach-design.md`
+**Spec:** `docs/design/specs/2026-11-10-voice-coach-design.md`
 
 ## Global Constraints
 
@@ -59,7 +57,7 @@ ml/tests/test_voice_latency.py              (V6)
 
 ### Task V1: Report builder and endpoints
 
-This is Task 17 of `docs/superpowers/plans/2026-11-08-blunderprint.md`, unchanged. Execute that task's steps exactly (its brief is extracted with `task-brief docs/superpowers/plans/2026-11-08-blunderprint.md 17`).
+This is Task 17 of `docs/design/plans/2026-11-08-blunderprint.md`, unchanged. Execute that task's steps exactly (its brief is extracted with `task-brief docs/design/plans/2026-11-08-blunderprint.md 17`).
 
 **Interfaces:**
 - Produces: `GET /players/{username}/report` (404 if no DONE run) returning the Report shape in Global Constraints; `GET /players/{username}/mistakes`.

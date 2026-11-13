@@ -1,0 +1,12 @@
+.venv/
+data/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+tests/
+target/
+node_modules/
+checkpoints/*
+!checkpoints/mlp.pt
+.env

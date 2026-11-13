@@ -1,10 +1,8 @@
 # Coach Mode Implementation Plan (voice coach v2)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`) syntax.
-
 **Goal:** Turn the voice coach from an answer-giver into a teacher: hints before answers, unlimited attempts on a position, engine lines played out on the board with arrows and explained from computed facts, "what if I play X?" exploration with a live engine, correct spoken move names, and a readable report table.
 
-**Builds on:** `docs/superpowers/specs/2026-11-10-voice-coach-design.md` and `docs/superpowers/plans/2026-11-10-voice-coach.md` (all tasks done).
+**Builds on:** `docs/design/specs/2026-11-10-voice-coach-design.md` and `docs/design/plans/2026-11-10-voice-coach.md` (all tasks done).
 
 ## Spec addendum (from the 2026-11-11 live test)
 
@@ -20,7 +18,7 @@ Problems seen: the board never moved on spoken moves; the LLM said "knight to f7
 
 ## Global Constraints
 
-- All constraints in `docs/superpowers/plans/2026-11-10-voice-coach.md` "Global Constraints" still apply (key handling, socket protocol, audio format, commit rules, LLM never judges chess).
+- All constraints in `docs/design/plans/2026-11-10-voice-coach.md` "Global Constraints" still apply (key handling, socket protocol, audio format, commit rules, LLM never judges chess).
 - Piece values: pawn 1, knight 3, bishop 3, rook 5, queen 9, king 0 (for material and fork logic).
 - Engine scores from the backend are centipawns from the **side to move**'s perspective (as stored in `eval_cache`); mate = ±(10000 − |n|).
 - Engine endpoint depth = `engine.depth` (12); engine version = `engine.version`; results are read from and written to `eval_cache` with the same key as the worker pool (`Fen.key(fen)`, engine version, depth, multipv 1).

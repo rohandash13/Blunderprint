@@ -1,6 +1,7 @@
 import chess
 
-from blunderprint_ml.tags import tag_move
+from blunderprint_ml.tags import (TAG_MIN_CPL, best_is_quiet, best_line_is_tactical, is_quiet, tag_move,
+                                  wins_free_material)
 
 
 def mv(u):
@@ -8,7 +9,9 @@ def mv(u):
 
 
 def test_not_a_mistake_has_no_tags():
-    assert tag_move(chess.Board(), mv("e2e4"), mv("d2d4"), 50, None) == []
+    assert TAG_MIN_CPL == 30
+    assert tag_move(chess.Board(), mv("e2e4"), mv("d2d4"), 20, None) == []
+    assert tag_move(chess.Board(), mv("e2e4"), mv("d2d4"), 29, None) == []
 
 
 def test_hanging_piece():
@@ -43,5 +46,160 @@ def test_time_trouble():
 
 
 def test_falls_back_to_other():
-    b = chess.Board("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 13")
-    assert tag_move(b, mv("a2a3"), mv("f1b5"), 120, None) == ["other"]
+    b = chess.Board("r1bqkbnr/ppp2ppp/2n5/3pp3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 13")
+    assert b.is_capture(mv("e4d5"))
+    assert tag_move(b, mv("a2a3"), mv("e4d5"), 120, None) == ["other"]
+
+
+_MIDDLE = "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 13"
+
+
+def test_is_quiet():
+    assert is_quiet(chess.Board(), mv("e2e4"))
+    cap = chess.Board("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2")
+    assert cap.is_capture(mv("e4d5")) and not is_quiet(cap, mv("e4d5"))
+    chk = chess.Board("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 30")
+    assert chk.gives_check(mv("a1a8")) and not is_quiet(chk, mv("a1a8"))
+    promo = chess.Board("8/P6k/8/8/8/8/8/K7 w - - 0 1")
+    assert mv("a7a8q") in promo.legal_moves and not is_quiet(promo, mv("a7a8q"))
+
+
+def test_wins_free_material_undefended_knight():
+    b = chess.Board("4k3/8/8/3n4/8/8/8/3QK3 w - - 0 1")
+    assert mv("d1d5") in b.legal_moves
+    assert wins_free_material(b, mv("d1d5"))
+
+
+def test_equal_defended_trade_is_not_free():
+    b = chess.Board("3qk3/8/8/8/8/8/8/3QK3 w - - 0 1")
+    assert b.is_capture(mv("d1d8"))
+    assert not wins_free_material(b, mv("d1d8"))
+
+
+def test_knight_takes_defended_pawn_is_not_free():
+    b = chess.Board("4k3/8/2p5/3p4/8/2N5/8/4K3 w - - 0 1")
+    assert b.is_capture(mv("c3d5"))
+    assert not wins_free_material(b, mv("c3d5"))      # d5 is guarded by the c6 pawn
+
+
+def test_pawn_takes_defended_rook_is_free():
+    b = chess.Board("4k3/8/2p5/3r4/4P3/8/8/4K3 w - - 0 1")
+    assert b.is_capture(mv("e4d5"))
+    assert wins_free_material(b, mv("e4d5"))          # 5 - 1 >= 2 even though c6 recaptures
+
+
+def test_en_passant_counts_as_pawn_capture():
+    b = chess.Board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1")
+    assert b.is_en_passant(mv("e5d6"))
+    assert wins_free_material(b, mv("e5d6"))          # d6 undefended after the capture
+
+
+def test_mate_in_one_is_free_material():
+    b = chess.Board("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 30")
+    assert wins_free_material(b, mv("a1a8"))
+
+
+def test_quiet_move_is_not_free_material():
+    assert not wins_free_material(chess.Board(), mv("e2e4"))
+
+
+def test_positional_tag_for_quiet_best():
+    b = chess.Board(_MIDDLE)
+    assert is_quiet(b, mv("f1b5"))
+    assert tag_move(b, mv("a2a3"), mv("f1b5"), 60, None) == ["positional"]
+
+
+def test_no_positional_when_best_is_forcing():
+    b = chess.Board("r1bqkbnr/ppp2ppp/2n5/3pp3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 13")
+    assert "positional" not in tag_move(b, mv("a2a3"), mv("e4d5"), 60, None)
+
+
+def test_no_positional_when_hanging_piece_tagged():
+    b = chess.Board("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2")
+    tags = tag_move(b, mv("d1g4"), mv("g1f3"), 400, None)
+    assert "hanging_piece" in tags and "positional" not in tags
+
+
+def test_no_tags_for_cpl_20_even_with_quiet_best():
+    assert tag_move(chess.Board(_MIDDLE), mv("a2a3"), mv("f1b5"), 20, None) == []
+
+
+def test_king_protected_by_pawn_cannot_recapture():
+    b = chess.Board("8/8/4k3/3n4/4P3/8/8/3RK3 w - - 0 1")
+    assert b.is_capture(mv("d1d5"))
+    assert wins_free_material(b, mv("d1d5"))          # Kxd5 is illegal: e4 guards d5
+
+
+def test_pinned_defender_cannot_recapture():
+    b = chess.Board("2k5/8/2b5/3n4/8/8/8/2RQK3 w - - 0 1")
+    assert b.is_capture(mv("d1d5"))
+    assert wins_free_material(b, mv("d1d5"))          # Bc6 is pinned to Kc8 by Rc1, so Bxd5 is illegal
+
+
+def test_king_takes_undefended_piece():
+    b = chess.Board("8/8/8/3n4/3K4/8/8/7k w - - 0 1")
+    assert b.is_capture(mv("d4d5"))
+    assert wins_free_material(b, mv("d4d5"))
+
+
+def test_promotion_capture_of_defended_rook():
+    b = chess.Board("1rk5/P7/8/8/8/8/8/4K3 w - - 0 1")
+    assert mv("a7b8q") in b.legal_moves and b.is_capture(mv("a7b8q"))
+    assert wins_free_material(b, mv("a7b8q"))         # 5 - 1 >= 2
+
+
+# --- best_line_is_tactical: a quiet-looking best move can still be a tactic ---
+_IN_CHECK = "4r1k1/8/8/8/8/8/5PPP/4K3 w - - 0 1"          # Re8 checks Ke1; Kd1 is a quiet evasion
+_WINS_QUEEN = "4k3/8/8/2q5/8/8/1P6/4K3 w - - 0 1"          # b4 hits the queen
+_MATE_IN_2 = "6k1/p4ppp/8/8/8/8/5PPP/R5K1 w - - 0 1"       # Rb1 a6 Rb8#
+
+
+def test_in_check_is_tactical_and_not_positional():
+    b = chess.Board(_IN_CHECK)
+    assert is_quiet(b, mv("e1d1"))
+    assert best_line_is_tactical(b, None)
+    assert not best_is_quiet(b, mv("e1d1"), None)
+    assert "positional" not in tag_move(b, mv("e1f1"), mv("e1d1"), 80, None)
+
+
+def test_quiet_move_winning_a_queen_by_ply_4_is_tactical():
+    b = chess.Board(_WINS_QUEEN)
+    assert is_quiet(b, mv("b2b4"))
+    assert best_line_is_tactical(b, "b2b4 e8e7 b4c5 e7e6")
+    assert not best_is_quiet(b, mv("b2b4"), "b2b4 e8e7 b4c5 e7e6")
+
+
+def test_quiet_move_mating_in_two_is_tactical():
+    b = chess.Board(_MATE_IN_2)
+    assert best_line_is_tactical(b, "a1b1 a7a6 b1b8")
+    assert not best_is_quiet(b, mv("a1b1"), "a1b1 a7a6 b1b8")
+
+
+def test_genuine_quiet_improving_move_stays_quiet_and_positional():
+    b = chess.Board(_MIDDLE)
+    pv = "f1b5 g8f6 e1g1 f8e7"
+    assert not best_line_is_tactical(b, pv)
+    assert best_is_quiet(b, mv("f1b5"), pv)
+    assert tag_move(b, mv("a2a3"), mv("f1b5"), 60, None, pv) == ["positional"]
+
+
+def test_sacrifice_then_recapture_is_not_counted_as_a_gain():
+    b = chess.Board(_MIDDLE)
+    assert not best_line_is_tactical(b, "f1b5 g8f6 b5c6 d7c6")
+
+
+def test_pv_is_cut_at_the_first_illegal_move_and_after_four_plies():
+    b = chess.Board(_WINS_QUEEN)
+    assert not best_line_is_tactical(b, "b2b4 e8e7 b4b5 e7e6 b5c6")     # ply 3 illegal-free but no gain
+    assert not best_line_is_tactical(b, "b2b4 e8e7 zzzz b4c5")          # garbage stops the walk
+    assert not best_line_is_tactical(b, "b2b4 e8e7 e1e8 b4c5")          # illegal ply 3 stops the walk
+    assert not best_line_is_tactical(b, "b2b4 e8e7 b4b5 e7e6 b5c6 e6e5 c6c7")  # only 4 plies are read
+
+
+def test_pv_whose_first_move_is_not_best_is_ignored():
+    b = chess.Board(_WINS_QUEEN)
+    pv = "b2b4 e8e7 b4c5 e7e6"
+    assert best_line_is_tactical(b, pv, mv("b2b4"))
+    assert not best_line_is_tactical(b, pv, mv("e1d1"))          # stale PV for another move
+    assert best_is_quiet(b, mv("e1d1"), pv)
+    assert best_line_is_tactical(chess.Board(_IN_CHECK), pv, mv("e1d1"))   # in-check rule still applies

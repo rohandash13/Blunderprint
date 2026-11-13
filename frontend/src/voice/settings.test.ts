@@ -13,17 +13,24 @@ describe("buildSettings", () => {
   it("configures nova-3 with chess keyterms, the think model, and an Aura voice", () => {
     expect(s.agent.listen.provider).toEqual({ type: "deepgram", model: "nova-3", keyterms: KEYTERMS });
     expect(KEYTERMS).toContain("knight");
+    for (const k of ["hint", "reveal", "reset"]) expect(KEYTERMS).toContain(k);
     expect(s.agent.think.provider).toEqual({ type: "open_ai", model: "gpt-4o-mini" });
     expect(s.agent.speak.provider).toEqual({ type: "deepgram", version: "v1", model: "aura-2-thalia-en" });
     expect("language" in s.agent.speak.provider).toBe(false);
   });
 
   it("declares the coach functions and names the player in the prompt", () => {
-    expect(s.agent.think.functions.map((f: { name: string }) => f.name)).toEqual(["get_report", "show_mistake", "start_drill", "play_move", "get_hint", "reveal_answer", "explain_line", "try_move", "reset_position"]);
+    expect(s.agent.think.functions.map((f: { name: string }) => f.name)).toEqual(["get_report", "show_mistake", "start_drill", "play_move", "get_hint", "reveal_answer", "explain_line", "try_move", "reset_position", "set_levels", "step_line"]);
     expect(s.agent.think.prompt).toContain("alice");
-    for (const w of ["play_move", "get_hint", "explain_line", "try_move", "spoken", "uncategorized middlegame mistakes", "attacks two pieces"]) {
+    for (const w of ["play_move", "get_hint", "explain_line", "try_move", "spoken", "uncategorized mistakes", "attacks two pieces", "engineLine", "evalSpoken", "materialForYou", "set_levels", "step_line"]) {
       expect(s.agent.think.prompt).toContain(w);
     }
+    expect(s.agent.think.prompt).not.toContain("harderThanPercent");
+    expect(s.agent.think.prompt).toContain("difficultyNote");
+    expect(s.agent.think.prompt).toContain("never percentages or ratings");
+    expect(s.agent.think.prompt).toContain("alternate positional and tactical");
+    expect(s.agent.think.prompt).toContain("Only drill or show patterns where drillable is true");
+    expect(s.agent.think.prompt).toContain("a time-trouble pattern is about the clock");
     expect(typeof s.agent.greeting).toBe("string");
   });
 

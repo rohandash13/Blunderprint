@@ -1,4 +1,10 @@
+server:
+  port: ${PORT:8080}
 spring:
+  task:
+    scheduling:
+      pool:
+        size: 2     # tick() traces with Stockfish; keep the worker reaper schedulable meanwhile
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/blunderprint}
     username: ${DB_USER:chess}
@@ -12,7 +18,7 @@ engine:
   version: ${ENGINE_VERSION:stockfish-local}
   depth: 12
 workers:
-  count: 2
+  count: ${WORKERS_COUNT:2}
   autostart: true
   reaper-timeout-seconds: 120
   max-attempts: 3
@@ -21,10 +27,16 @@ lichess:
   base-url: https://lichess.org
   token: ${LICHESS_TOKEN:}
 model:
-  url: ${MODEL_URL:http://localhost:8000}
+  url: ${MODEL_URL:http://${MODEL_HOSTPORT:localhost:8000}}
 report:
-  mistake-cpl: 100
+  levels:
+    slip-below: 300
+    deep-above: 100
   min-p-played: 0.15
 deepgram:
   api-key: ${DEEPGRAM_API_KEY:}
   base-url: https://api.deepgram.com
+voice:
+  rate:
+    per-ip-per-hour: 20
+    per-day: 300

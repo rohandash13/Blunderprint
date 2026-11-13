@@ -5,9 +5,9 @@ import chess
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from .inference import p_played_batch
+from .inference import p_played_and_best_batch
 from .models import load_checkpoint
-from .tags import tag_move
+from .tags import best_is_quiet, tag_move, wins_free_material
 
 
 class MoveIn(BaseModel):
@@ -16,6 +16,7 @@ class MoveIn(BaseModel):
     rating: int | None = None
     played_uci: str
     best_uci: str | None = None
+    best_pv: str | None = None
     cpl: int | None = None
     clock_cs: int | None = None
 
@@ -27,7 +28,10 @@ class AnalyzeRequest(BaseModel):
 class MoveOut(BaseModel):
     id: int
     p_played: float
+    p_best: float | None = None
     tags: list[str]
+    best_quiet: bool | None = None
+    best_free_material: bool | None = None
 
 
 def _invalid(move_id: int, reason: str) -> HTTPException:
@@ -74,12 +78,15 @@ def create_app() -> FastAPI:
             playeds.append(played)
             bests.append(best)
 
-        probs = p_played_batch(state["model"], boards, playeds, [m.rating for m in req.moves])
+        scored = p_played_and_best_batch(state["model"], boards, playeds, bests, [m.rating for m in req.moves])
         out = []
-        for m, board, played, best, p in zip(req.moves, boards, playeds, bests, probs):
+        for m, board, played, best, (p, pb) in zip(req.moves, boards, playeds, bests, scored):
             # Without a centipawn loss there is nothing to tag against, so no tags.
-            tags = [] if m.cpl is None else tag_move(board, played, best, m.cpl, m.clock_cs)
-            out.append(MoveOut(id=m.id, p_played=p, tags=tags))
+            tags = [] if m.cpl is None else tag_move(board, played, best, m.cpl, m.clock_cs, m.best_pv)
+            out.append(MoveOut(
+                id=m.id, p_played=p, p_best=pb, tags=tags,
+                best_quiet=None if best is None else best_is_quiet(board, best, m.best_pv),
+                best_free_material=None if best is None else wins_free_material(board, best)))
         return out
 
     return app
