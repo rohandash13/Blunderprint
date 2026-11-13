@@ -1,6 +1,7 @@
 package com.blunderprint.analysis;
 
 import com.blunderprint.engine.EngineTracer;
+import com.blunderprint.engine.Trace;
 import com.blunderprint.model.ModelClient;
 import com.blunderprint.model.ModelClient.MoveIn;
 import com.blunderprint.model.ModelClient.MoveOut;
@@ -24,10 +25,13 @@ public class AnalysisService {
 
     public record Progress(String status, long totalFens, long doneFens, long failedFens) {}
 
-    private record Scored(long moveId, String fen, Integer rating, String playedUci, String bestUci,
+    private record Scored(long moveId, String fen, Integer rating, String playedUci, String bestUci, String bestPv,
                           int cpl, double winDrop, Integer clockCs) {}
 
-    private record Candidate(long moveId, String beforeKey, boolean quiet, boolean freeMaterial) {}
+    private record Candidate(long moveId, String beforeKey, String bestUci, boolean quiet, boolean freeMaterial) {}
+
+    /** The best move must beat the second-best by this much win chance to count as an only move. */
+    private static final double ONLY_MOVE_GAP = 0.10;
 
     private final JdbcTemplate jdbc;
     private final ModelClient model;
@@ -90,7 +94,7 @@ public class AnalysisService {
 
     private int score(UUID run) {
         List<Scored> rows = jdbc.query("""
-            select m.id, m.before_fen, m.rating, m.played_uci, m.clock_cs, eb.best_uci,
+            select m.id, m.before_fen, m.rating, m.played_uci, m.clock_cs, eb.best_uci, eb.pv as best_pv,
                    eb.score_cp as best_score, ea.score_cp as after_score
             from move m
             join analysis_run r on r.id = m.run_id
@@ -99,6 +103,7 @@ public class AnalysisService {
             where m.run_id = ?
             """, (rs, i) -> new Scored(rs.getLong("id"), rs.getString("before_fen"),
                 (Integer) rs.getObject("rating"), rs.getString("played_uci"), rs.getString("best_uci"),
+                rs.getString("best_pv"),
                 Cpl.compute(rs.getInt("best_score"), rs.getInt("after_score")),
                 WinChance.drop(rs.getInt("best_score"), -rs.getInt("after_score")),
                 (Integer) rs.getObject("clock_cs")), run);
@@ -107,13 +112,14 @@ public class AnalysisService {
             jdbc.update("""
                 insert into move_analysis(move_id, cpl, best_uci, win_drop) values (?, ?, ?, ?)
                 on conflict (move_id) do update set cpl = excluded.cpl, best_uci = excluded.best_uci,
-                    win_drop = excluded.win_drop, find_depth = null, only_move = null, difficulty_elo = null
+                    win_drop = excluded.win_drop
                 """, s.moveId(), s.cpl(), s.bestUci(), s.winDrop());
         }
         for (int i = 0; i < rows.size(); i += MODEL_BATCH) {
             List<MoveIn> batch = new ArrayList<>();
             for (Scored s : rows.subList(i, Math.min(rows.size(), i + MODEL_BATCH))) {
-                batch.add(new MoveIn(s.moveId(), s.fen(), s.rating(), s.playedUci(), s.bestUci(), s.cpl(), s.clockCs()));
+                batch.add(new MoveIn(s.moveId(), s.fen(), s.rating(), s.playedUci(), s.bestUci(), s.bestPv(), s.cpl(),
+                    s.clockCs()));
             }
             for (MoveOut o : model.analyze(batch)) {
                 jdbc.update(con -> {
@@ -132,30 +138,53 @@ public class AnalysisService {
         return rows.size();
     }
 
-    /** Runs the MultiPV-2 trace for this run's candidate moves, sequentially, and stores difficulty. */
+    /**
+     * Runs the MultiPV-2 trace for this run's candidate moves, sequentially, against each stored best move, and
+     * stores difficulty. Rows of this run that were not traced successfully (non-candidates, failed or
+     * disagreeing traces) end with null difficulty; traced rows are overwritten in place so a rescore never
+     * leaves a report temporarily unrated.
+     */
     private void traceCandidates(UUID run) {
         List<Candidate> candidates = jdbc.query("""
-            select m.id, m.before_key, coalesce(a.best_quiet, false) as quiet,
+            select m.id, m.before_key, a.best_uci, coalesce(a.best_quiet, false) as quiet,
                    coalesce(a.best_free_material, false) as free
             from move m join move_analysis a on a.move_id = m.id
-            where m.run_id = ? and a.win_drop >= 0.05 and a.p_played >= ?
-              and (a.win_drop >= 0.10 or a.best_quiet)
-            """, (rs, i) -> new Candidate(rs.getLong("id"), rs.getString("before_key"),
-                rs.getBoolean("quiet"), rs.getBoolean("free")), run, minPPlayed);
-        int traced = 0;
+            where m.run_id = ? and %s
+            """.formatted(Severity.CANDIDATE_SQL), (rs, i) -> new Candidate(rs.getLong("id"),
+                rs.getString("before_key"), rs.getString("best_uci"), rs.getBoolean("quiet"),
+                rs.getBoolean("free")), run, minPPlayed);
+        List<Long> tracedIds = new ArrayList<>();
         int failures = 0;
+        int disagreed = 0;
         for (Candidate c : candidates) {
-            var trace = tracer.trace(c.beforeKey());
+            var trace = c.bestUci() == null ? java.util.Optional.<Trace>empty() : tracer.trace(c.beforeKey(), c.bestUci());
             if (trace.isEmpty()) { failures++; continue; }
             var t = trace.get();
-            boolean only = t.secondCp() != null
-                && WinChance.of(t.bestCp()) - WinChance.of(t.secondCp()) >= 0.10;
+            boolean only;
+            if (t.targetIsBest()) {
+                only = t.secondCp() != null
+                    && WinChance.of(t.bestCp()) - WinChance.of(t.secondCp()) >= ONLY_MOVE_GAP;
+            } else if (c.bestUci().equals(t.secondUci())) {
+                only = false;
+            } else {
+                disagreed++;       // the drilled move is in neither of the trace's lines
+                continue;
+            }
             int elo = DifficultyEstimator.estimate(t.findDepth(), c.freeMaterial(), c.quiet(), only);
             jdbc.update("update move_analysis set find_depth = ?, only_move = ?, difficulty_elo = ? where move_id = ?",
                 t.findDepth(), only, elo, c.moveId());
-            traced++;
+            tracedIds.add(c.moveId());
         }
-        log.info("run {}: traced {} of {} candidate moves ({} without a trace)", run, traced, candidates.size(), failures);
+        jdbc.update(con -> {
+            var ps = con.prepareStatement("""
+                update move_analysis set find_depth = null, only_move = null, difficulty_elo = null
+                where move_id in (select id from move where run_id = ?) and not (move_id = any (?))""");
+            ps.setObject(1, run);
+            ps.setArray(2, con.createArrayOf("bigint", tracedIds.toArray()));
+            return ps;
+        });
+        log.info("run {}: traced {} of {} candidate moves ({} without a trace, {} trace disagreed)", run,
+            tracedIds.size(), candidates.size(), failures, disagreed);
     }
 
     /** Re-runs model scoring for the player's latest DONE run (idempotent). Empty when there is no such run. */

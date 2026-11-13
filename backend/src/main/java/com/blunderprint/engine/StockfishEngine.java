@@ -43,10 +43,11 @@ public class StockfishEngine implements AutoCloseable {
     }
 
     /**
-     * MultiPV-2 search. findDepth = smallest depth d such that the multipv-1 first move at every
-     * depth >= d equals the final bestmove. secondCp = last multipv-2 score at the final depth.
+     * MultiPV-2 search describing {@code targetUci} (the move being drilled). findDepth = smallest depth d such
+     * that the multipv-1 first move at every depth >= d equals the target; targetIsBest = the final multipv-1
+     * first move is the target. secondCp/secondUci = last multipv-2 score and first move at the final depth.
      */
-    public Trace trace(String fenKey, int depth) throws IOException {
+    public Trace trace(String fenKey, int depth, String targetUci) throws IOException {
         // Fresh search state so earlier searches cannot change findDepth between runs.
         send("ucinewgame");
         send("isready");
@@ -57,6 +58,7 @@ public class StockfishEngine implements AutoCloseable {
             send("go depth " + depth);
             NavigableMap<Integer, String> firstMoveByDepth = new TreeMap<>();
             Map<Integer, Integer> secondByDepth = new TreeMap<>();
+            Map<Integer, String> secondMoveByDepth = new TreeMap<>();
             TreeMap<Integer, Integer> bestByDepth = new TreeMap<>();
             String line;
             while ((line = in.readLine()) != null) {
@@ -66,9 +68,11 @@ public class StockfishEngine implements AutoCloseable {
                     String best = t[1];
                     if (bestByDepth.isEmpty()) throw new IOException("no score for " + fenKey);
                     int finalDepth = bestByDepth.lastKey();
-                    int findDepth = findDepth(firstMoveByDepth, finalDepth, best);
+                    int findDepth = findDepth(firstMoveByDepth, finalDepth, targetUci);
+                    boolean targetIsBest = targetUci.equals(firstMoveByDepth.get(finalDepth));
                     // secondCp null = single legal move, or no multipv-2 line was reported at the final depth.
-                    return new Trace(best, bestByDepth.get(finalDepth), secondByDepth.get(finalDepth), findDepth);
+                    return new Trace(best, bestByDepth.get(finalDepth), secondByDepth.get(finalDepth),
+                        secondMoveByDepth.get(finalDepth), findDepth, targetIsBest);
                 }
                 var p = UciParser.parseInfoAny(line);
                 if (p.isEmpty() || p.get().pv() == null || p.get().pv().isEmpty()) continue;
@@ -79,6 +83,7 @@ public class StockfishEngine implements AutoCloseable {
                     firstMoveByDepth.put(info.depth(), info.pv().split("\\s+")[0]);
                 } else if (info.multipv() == 2) {
                     secondByDepth.put(info.depth(), cp);
+                    secondMoveByDepth.put(info.depth(), info.pv().split("\\s+")[0]);
                 }
             }
             throw new IOException("engine closed unexpectedly");
@@ -88,15 +93,15 @@ public class StockfishEngine implements AutoCloseable {
     }
 
     /**
-     * Smallest depth d such that the multipv-1 first move at every recorded depth >= d equals best.
+     * Smallest depth d such that the multipv-1 first move at every recorded depth >= d equals target.
      * Depths with no recorded line are skipped; a final-depth disagreement yields finalDepth.
      */
-    static int findDepth(NavigableMap<Integer, String> firstMoveByDepth, int finalDepth, String best) {
+    static int findDepth(NavigableMap<Integer, String> firstMoveByDepth, int finalDepth, String target) {
         int found = finalDepth;
         for (int d = finalDepth; d >= 1; d--) {
             String m = firstMoveByDepth.get(d);
             if (m == null) continue;
-            if (!m.equals(best)) break;
+            if (!m.equals(target)) break;
             found = d;
         }
         return found;

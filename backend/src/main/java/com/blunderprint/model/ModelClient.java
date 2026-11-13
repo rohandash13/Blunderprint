@@ -16,6 +16,7 @@ public class ModelClient {
     public record MoveIn(long id, String fen, Integer rating,
                          @JsonProperty("played_uci") String playedUci,
                          @JsonProperty("best_uci") String bestUci,
+                         @JsonProperty("best_pv") String bestPv,
                          int cpl,
                          @JsonProperty("clock_cs") Integer clockCs) {}
 

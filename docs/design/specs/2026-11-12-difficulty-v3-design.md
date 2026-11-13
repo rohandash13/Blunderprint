@@ -35,11 +35,26 @@ Computed once per move during scoring and stored in `move_analysis` (Flyway `V3`
 | Column | Source | Meaning |
 |---|---|---|
 | `win_drop double` | Java, from cached evals | Drop in winning chances on the [0,1] scale, from the mover's side: `wc(best) − wc(played)` with `wc(cp) = 1 / (1 + exp(−0.00368208·cp))` (the Lichess win-chance curve). |
-| `best_quiet bool` | Python `/analyze` | Best move is not a capture, check or promotion. |
+| `best_quiet bool` | Python `/analyze` | Best move is not a capture, check or promotion, and its line is not tactical (see below). |
 | `best_free_material bool` | Python `/analyze` | Best move captures a piece that is undefended, or worth more than the capturing piece (net gain ≥ 2 pawns). Also true for mate in 1. |
-| `find_depth int` | Java, Stockfish trace | Shallowest iterative-deepening depth from which Stockfish's first PV move equals its final best move at every later depth (search to depth 14). |
-| `only_move bool` | Java, Stockfish MultiPV 2 | Best minus second-best ≥ 0.10 in win chance at the final depth (one move clearly works). |
+| `find_depth int` | Java, Stockfish trace | Shallowest iterative-deepening depth from which Stockfish's first PV move equals the stored `best_uci` (the move being drilled) at every later depth (search to depth 14). |
+| `only_move bool` | Java, Stockfish MultiPV 2 | The stored best move is the final multipv-1 move and beats the second-best by ≥ 0.10 in win chance (one move clearly works). |
 | `difficulty_elo int` | Java, `DifficultyEstimator` | Estimated rating at which players usually find the move (below). |
+
+**Tactical lines.** A move that is quiet by type can still be a tactic. Java sends the cached best line to Python
+as `best_pv` (space-separated UCI, from the `eval_cache` row for the best move). `best_line_is_tactical(board,
+best_pv)` is true when the mover is in check (a check evasion), or when playing the PV for at most 4 plies
+(stopping at the first illegal move) the mover delivers mate, or the mover's material balance (P1 N3 B3 R5 Q9)
+is ≥ 2 better than at the start after an opponent reply (ply 2 or 4, so a sacrifice that is recaptured is not a
+gain). `best_quiet = is_quiet(best) and not best_line_is_tactical`; the `positional` tag uses the same
+definition. `best_free_material` is unchanged.
+
+**Trace against the stored best move.** The trace describes the move that is drilled, not whatever Stockfish
+prefers at depth 14. `EngineTracer.trace(fenKey, targetUci)` measures `find_depth` against `targetUci` (the stored
+`move_analysis.best_uci`) and reports `targetIsBest` (the final multipv-1 first move is the target) and the
+multipv-2 first move. `only_move` is computed as above when `targetIsBest`; `false` when the target is the final
+multipv-2 move; and when the target is in neither line, `find_depth`, `only_move` and `difficulty_elo` stay null
+(the move reads as `unrated`) and the run's log line counts it as "trace disagreed".
 
 The trace (`find_depth`, `only_move`) runs only for candidate moves (§2), so it costs one MultiPV-2 search per
 candidate (≈ 100–300 per player), done in the scoring step and by rescore.
@@ -79,6 +94,26 @@ Config: `report.levels.slip-below: 300`, `report.levels.deep-above: 100`.
 **Report:** same endpoint and `?levels=` (default `tricky,deep`). Examples are sorted by `win_drop` descending
 within the filter. Each example gains `kind` (`tactical` if not `best_quiet`, else `positional`), `severity`
 (`inaccuracy|mistake|blunder`), `difficultyElo`, `level`. `harderThanPercent` and the tertile logic are removed.
+
+**Drillable patterns.** `get_report` patterns carry `drillable` (`examples > 0`). The prompt says to drill or show
+only drillable patterns; a `time_trouble` pattern is about the clock, so the coach talks about it instead of
+drilling. The pattern table disables Show/Drill with the tooltip "No positions at these levels" when a pattern
+has no examples.
+
+**Level chips (`levelCounts`).** Clock (`time_trouble`-primary) candidates only produce examples under the
+`slip` filter, so they are excluded from `levelCounts` unless `slip` is in the filter; a chip never promises
+positions that are not there. Pattern counts are unchanged (clock errors always count toward their pattern).
+
+**Old runs.** Flyway `V4__backfill_win_drop.sql` fills `move_analysis.win_drop` where null from `eval_cache`
+exactly like `AnalysisService.score` (join on `before_key`/`after_key` with the run's engine and depth,
+`multipv = 1`). `difficulty_elo` stays null, so those moves are `unrated` (and, when every candidate is unrated,
+the all-unrated fallback shows them) until the run is rescored.
+
+**Scheduling and rescore.** `spring.task.scheduling.pool.size: 2`, so tracing inside `tick()` does not block
+the worker reaper. `score()` no longer nulls `find_depth`/`only_move`/`difficulty_elo` in its upsert; after the
+trace pass it nulls them only for this run's rows that were not traced successfully (non-candidates, failed or
+disagreeing traces), so a rescore never shows a temporarily all-unrated report. The candidate thresholds
+(0.05 / 0.10) live in one place (`analysis.Severity`), shared by `AnalysisService` and `ReportService`.
 
 ## 3. Coach wording
 

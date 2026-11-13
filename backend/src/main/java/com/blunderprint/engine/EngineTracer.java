@@ -23,7 +23,8 @@ public class EngineTracer {
         this.path = path;
     }
 
-    public synchronized Optional<Trace> trace(String fenKey) {
+    /** Traces {@code fenKey} against {@code targetUci}, the stored best move being drilled. */
+    public synchronized Optional<Trace> trace(String fenKey, String targetUci) {
         try {
             if (engine == null) {
                 if (startFailedAtMs >= 0 && System.currentTimeMillis() - startFailedAtMs < RETRY_AFTER_MS) {
@@ -38,7 +39,7 @@ public class EngineTracer {
                     return Optional.empty();
                 }
             }
-            return Optional.of(engine.trace(fenKey, TRACE_DEPTH));
+            return Optional.of(engine.trace(fenKey, TRACE_DEPTH, targetUci));
         } catch (StockfishEngine.NoLegalMoveException e) {
             return Optional.empty();
         } catch (IOException | RuntimeException e) {

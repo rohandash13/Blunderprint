@@ -36,6 +36,14 @@ class FindDepthTest {
     }
 
     @Test
+    void measuredAgainstTargetNotAgainstWhateverLedEarlier() {
+        // "b" led until depth 2; the final best is "a" (the target): found at 3. Against "b" it never holds.
+        var m = moves(1, "b", 2, "b", 3, "a", 4, "a");
+        assertEquals(3, StockfishEngine.findDepth(m, 4, "a"));
+        assertEquals(4, StockfishEngine.findDepth(m, 4, "b"));
+    }
+
+    @Test
     void stableFromDepthOne() {
         var m = moves(1, "a", 2, "a", 3, "a");
         assertEquals(1, StockfishEngine.findDepth(m, 3, "a"));

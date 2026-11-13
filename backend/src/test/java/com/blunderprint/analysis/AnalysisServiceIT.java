@@ -175,7 +175,7 @@ class AnalysisServiceIT extends PostgresIT {
         seed();
         seedEvals();
         stubModel(0.4, true, false);
-        when(tracer.trace("A")).thenReturn(Optional.of(new Trace("d2d4", 100, -100, 6)));
+        when(tracer.trace("A", "d2d4")).thenReturn(Optional.of(new Trace("d2d4", 100, -100, "c2c4", 6, true)));
         analysis.tick();
         var row = jdbc.queryForMap("select win_drop, best_quiet, best_free_material, find_depth, only_move, difficulty_elo from move_analysis");
         assertEquals(WinChance.drop(30, -200), (Double) row.get("win_drop"), 1e-9);
@@ -184,7 +184,7 @@ class AnalysisServiceIT extends PostgresIT {
         assertEquals(6, row.get("find_depth"));
         assertEquals(true, row.get("only_move"));
         assertEquals(DifficultyEstimator.estimate(6, false, true, true), row.get("difficulty_elo"));
-        verify(tracer, times(1)).trace(anyString());
+        verify(tracer, times(1)).trace(anyString(), anyString());
     }
 
     @Test
@@ -192,7 +192,7 @@ class AnalysisServiceIT extends PostgresIT {
         UUID run = seed();
         seedEvals();
         stubModel(0.4, false, false);
-        when(tracer.trace("A")).thenReturn(Optional.empty());
+        when(tracer.trace("A", "d2d4")).thenReturn(Optional.empty());
         analysis.tick();
         var row = jdbc.queryForMap("select find_depth, only_move, difficulty_elo from move_analysis");
         assertNull(row.get("find_depth"));
@@ -208,27 +208,95 @@ class AnalysisServiceIT extends PostgresIT {
         // low p_played: habit filter excludes it
         stubModel(0.05, false, false);
         analysis.tick();
-        verify(tracer, never()).trace(anyString());
+        verify(tracer, never()).trace(anyString(), anyString());
         assertNull(jdbc.queryForObject("select find_depth from move_analysis", Integer.class));
     }
 
     @Test
     void smallDropNeedsQuietBestMove() {
         UUID run = seed();
-        // best +30, after (opponent view) -10 => played +10... use after = -40 => played 40 => small drop (~0.0)
+        // best +150, after (opponent view) -40 => played +40 => win_drop ~ 0.066 (inaccuracy range)
         jdbc.update("insert into eval_cache(fen_key, engine, depth, best_uci, score_cp) values ('A','sf',10,'d2d4',150)");
         jdbc.update("insert into eval_cache(fen_key, engine, depth, best_uci, score_cp) values ('B','sf',10,'e7e5',-40)");
-        // win_drop = wc(150) - wc(40) ~ 0.066 : inaccuracy range
         stubModel(0.4, false, false);
         analysis.tick();
-        verify(tracer, never()).trace(anyString());
+        verify(tracer, never()).trace(anyString(), anyString());
         analysis.rescoreLatest("u");
-        verify(tracer, never()).trace(anyString());
+        verify(tracer, never()).trace(anyString(), anyString());
         stubModel(0.4, true, false);
-        when(tracer.trace("A")).thenReturn(Optional.of(new Trace("d2d4", 150, 100, 3)));
+        when(tracer.trace("A", "d2d4")).thenReturn(Optional.of(new Trace("d2d4", 150, 100, "c2c4", 3, true)));
         analysis.rescoreLatest("u");
-        verify(tracer, times(1)).trace("A");
+        verify(tracer, times(1)).trace("A", "d2d4");
         assertEquals(false, jdbc.queryForObject("select only_move from move_analysis", Boolean.class));
         assertEquals("DONE", analysis.progress(run).status());
+    }
+
+    private Object diffCol(String col) {
+        return jdbc.queryForObject("select " + col + " from move_analysis", Object.class);
+    }
+
+    @Test
+    void nullSecondScoreMeansNotAnOnlyMove() {
+        seed();
+        seedEvals();
+        stubModel(0.4, false, false);
+        when(tracer.trace("A", "d2d4")).thenReturn(Optional.of(new Trace("d2d4", 100, null, null, 6, true)));
+        analysis.tick();
+        assertEquals(false, diffCol("only_move"));
+        assertEquals(DifficultyEstimator.estimate(6, false, false, false), diffCol("difficulty_elo"));
+    }
+
+    @Test
+    void targetOnlyInSecondLineIsNeverAnOnlyMove() {
+        seed();
+        seedEvals();
+        stubModel(0.4, false, false);
+        // The engine now prefers another move; the drilled one is its second line.
+        when(tracer.trace("A", "d2d4")).thenReturn(Optional.of(new Trace("g1f3", 300, 100, "d2d4", 14, false)));
+        analysis.tick();
+        assertEquals(false, diffCol("only_move"));
+        assertEquals(14, diffCol("find_depth"));
+        assertEquals(DifficultyEstimator.estimate(14, false, false, false), diffCol("difficulty_elo"));
+    }
+
+    @Test
+    void targetInNeitherLineLeavesDifficultyNull() {
+        UUID run = seed();
+        seedEvals();
+        stubModel(0.4, false, false);
+        when(tracer.trace("A", "d2d4")).thenReturn(Optional.of(new Trace("g1f3", 300, 100, "c2c4", 14, false)));
+        analysis.tick();
+        assertNull(diffCol("find_depth"));
+        assertNull(diffCol("only_move"));
+        assertNull(diffCol("difficulty_elo"));
+        assertEquals("DONE", analysis.progress(run).status());
+    }
+
+    @Test
+    void rescoreKeepsOldDifficultyUntilReplacedAndNullsUntracedRows() {
+        UUID run = seed();
+        jdbc.update("update analysis_run set status = 'DONE' where id = ?", run);
+        seedEvals();
+        stubModel(0.4, false, false);
+        when(tracer.trace("A", "d2d4")).thenReturn(Optional.of(new Trace("d2d4", 100, -100, "c2c4", 6, true)));
+        analysis.rescoreLatest("u");
+        Object first = diffCol("difficulty_elo");
+        assertNotNull(first);
+
+        // During the rescore's trace pass the earlier estimate must still be visible (no blank report).
+        java.util.List<Object> seenDuringRescore = new java.util.ArrayList<>();
+        when(tracer.trace("A", "d2d4")).thenAnswer(inv -> {
+            seenDuringRescore.add(diffCol("difficulty_elo"));
+            return Optional.of(new Trace("d2d4", 100, -100, "c2c4", 3, true));
+        });
+        analysis.rescoreLatest("u");
+        assertEquals(List.of(first), seenDuringRescore);
+        assertNotEquals(first, diffCol("difficulty_elo"));
+
+        // A failed trace on a later rescore leaves that row without a (stale) estimate.
+        when(tracer.trace("A", "d2d4")).thenReturn(Optional.empty());
+        analysis.rescoreLatest("u");
+        assertNull(diffCol("difficulty_elo"));
+        assertNull(diffCol("find_depth"));
     }
 }

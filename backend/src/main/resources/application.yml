@@ -1,4 +1,8 @@
 spring:
+  task:
+    scheduling:
+      pool:
+        size: 2     # tick() traces with Stockfish; keep the worker reaper schedulable meanwhile
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/blunderprint}
     username: ${DB_USER:chess}

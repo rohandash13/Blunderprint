@@ -1,5 +1,8 @@
 package com.blunderprint.report;
 
+import static com.blunderprint.analysis.Severity.*;
+
+import com.blunderprint.analysis.Severity;
 import java.sql.Array;
 import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,7 +24,6 @@ public class ReportService {
     static final List<String> PATTERN_PRIORITY = List.of("time_trouble", "missed_tactic", "hanging_piece",
         "positional", "endgame_technique", "opening_error");
     static final String OTHER = "other";
-    static final double INACCURACY = 0.05, MISTAKE = 0.10, BLUNDER = 0.15;
 
     private final JdbcTemplate jdbc;
     private final double minP;
@@ -79,9 +81,9 @@ public class ReportService {
         var counts = jdbc.queryForMap("""
             select count(*) moves,
                    count(*) filter (where a.win_drop >= ?) mistakes,
-                   count(*) filter (where a.win_drop >= ? and a.p_played >= ? and (a.win_drop >= ? or a.best_quiet)) candidates
+                   count(*) filter (where %s) candidates
             from move m join move_analysis a on a.move_id = m.id where m.run_id = ?
-            """, MISTAKE, INACCURACY, minP, MISTAKE, run);
+            """.formatted(Severity.CANDIDATE_SQL), MISTAKE, minP, run);
 
         String lvl = difficulty.sqlLevel("a.difficulty_elo", "m.rating");
         List<Cand> cands = jdbc.query("""
@@ -91,9 +93,9 @@ public class ReportService {
             join analysis_run r on r.id = m.run_id
             left join eval_cache c on c.fen_key = m.before_key and c.engine = r.engine
                                   and c.depth = r.depth and c.multipv = 1
-            where m.run_id = ? and a.win_drop >= ? and a.p_played >= ? and (a.win_drop >= ? or a.best_quiet)
+            where m.run_id = ? and %s
             order by a.win_drop desc, m.game_id, m.ply
-            """.formatted(lvl), (rs, i) -> {
+            """.formatted(lvl, Severity.CANDIDATE_SQL), (rs, i) -> {
                 double wd = rs.getDouble("win_drop");
                 String level = rs.getString("level");
                 Integer elo = (Integer) rs.getObject("difficulty_elo");
@@ -101,17 +103,22 @@ public class ReportService {
                     rs.getString("played_uci"), rs.getString("best_uci"), rs.getInt("cpl"), rs.getDouble("p_played"),
                     splitPv(rs.getString("pv")), level, kind((Boolean) rs.getObject("best_quiet")), severity(wd), elo);
                 return new Cand(primaryPattern(tagsOf(rs)), level, ex);
-            }, run, INACCURACY, minP, MISTAKE);
-
-        Map<String, Integer> levelCounts = new LinkedHashMap<>();
-        for (String l : Difficulty.ALL) levelCounts.put(l, 0);
-        for (Cand c : cands) levelCounts.merge(c.level(), 1, Integer::sum);
+            }, run, minP);
 
         // When no candidate in the run has an estimate yet, show unrated ones rather than nothing.
         List<String> effective = new ArrayList<>(levels);
-        boolean allUnrated = !cands.isEmpty() && levelCounts.get("unrated") == cands.size();
+        boolean allUnrated = !cands.isEmpty() && cands.stream().allMatch(c -> c.level().equals("unrated"));
         if (allUnrated && !effective.contains("unrated")) effective.add("unrated");
         boolean clockExamples = effective.contains("slip");
+
+        // Clock (time_trouble) candidates only ever yield examples under the slip filter, so they only count
+        // toward the level chips then; otherwise a chip could promise positions that are not there.
+        Map<String, Integer> levelCounts = new LinkedHashMap<>();
+        for (String l : Difficulty.ALL) levelCounts.put(l, 0);
+        for (Cand c : cands) {
+            if (c.tag().equals("time_trouble") && !clockExamples) continue;
+            levelCounts.merge(c.level(), 1, Integer::sum);
+        }
 
         Map<String, List<Example>> examples = new LinkedHashMap<>();
         Map<String, double[]> stats = new HashMap<>();     // tag -> [count, sumCpl]

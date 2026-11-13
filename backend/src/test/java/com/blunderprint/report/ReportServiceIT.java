@@ -223,4 +223,41 @@ class ReportServiceIT extends PostgresIT {
         assertTrue(r.patterns().stream().flatMap(p -> p.examples().stream()).allMatch(e -> e.level().equals("unrated")));
         assertEquals(2, r.levelCounts().get("unrated"));
     }
+
+    @Test
+    void levelBoundariesAgreeBetweenReportSqlAndMistakesJava() {
+        UUID run = UUID.randomUUID();
+        seed(run, "DONE");
+        // rating 1500: slip <= 1200, tricky 1201..1600, deep > 1600; a null rating counts as 1500.
+        // One pattern per row so the three-example cap never hides one.
+        move(run, 2, 300, 0.4, "{hanging_piece}", 0.2, false, 1200, 1500);          // slip
+        move(run, 4, 300, 0.4, "{missed_tactic}", 0.2, false, 1201, 1500);          // tricky
+        move(run, 6, 300, 0.4, "{positional}", 0.2, false, 1600, 1500);             // tricky
+        move(run, 8, 300, 0.4, "{endgame_technique}", 0.2, false, 1601, 1500);      // deep
+        move(run, 10, 300, 0.4, "{opening_error}", 0.2, false, 1200, null);         // slip (rating 1500)
+        move(run, 12, 300, 0.4, "{foo}", 0.2, false, 1601, null);                   // deep (rating 1500)
+        Map<Integer, String> expected = Map.of(2, "slip", 4, "tricky", 6, "tricky", 8, "deep", 10, "slip", 12, "deep");
+
+        Map<Integer, String> sqlLevels = new java.util.HashMap<>();
+        reports.report("alice", Difficulty.ALL).orElseThrow().patterns()
+            .forEach(p -> p.examples().forEach(e -> sqlLevels.put(e.ply(), e.level())));
+        Map<Integer, String> javaLevels = new java.util.HashMap<>();
+        reports.mistakes("alice").forEach(r -> javaLevels.put(r.ply(), r.level()));
+
+        assertEquals(expected, sqlLevels);
+        assertEquals(expected, javaLevels);
+    }
+
+    @Test
+    void clockCandidatesOnlyCountTowardLevelChipsWhenSlipIsFiltered() {
+        UUID run = UUID.randomUUID();
+        seed(run, "DONE");
+        move(run, 2, 300, 0.4, "{missed_tactic,time_trouble}", 0.20, false, 1100);   // clock, slip
+        move(run, 4, 300, 0.4, "{time_trouble}", 0.20, false, 1500);                  // clock, tricky
+        move(run, 6, 300, 0.4, "{missed_tactic}", 0.20, false, 1500);                 // tricky
+        var def = reports.report("alice").orElseThrow();
+        assertEquals(Map.of("slip", 0, "tricky", 1, "deep", 0, "unrated", 0), def.levelCounts());
+        var withSlip = reports.report("alice", List.of("slip", "tricky")).orElseThrow();
+        assertEquals(Map.of("slip", 1, "tricky", 2, "deep", 0, "unrated", 0), withSlip.levelCounts());
+    }
 }

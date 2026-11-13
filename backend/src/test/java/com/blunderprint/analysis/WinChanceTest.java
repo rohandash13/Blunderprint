@@ -21,6 +21,17 @@ class WinChanceTest {
     }
 
     @Test
+    void mateScoresAreFiniteProbabilities() {
+        for (int cp : new int[] {9999, -9999, 10000, -10000}) {
+            double w = WinChance.of(cp);
+            assertTrue(Double.isFinite(w) && w >= 0.0 && w <= 1.0, "of(" + cp + ")=" + w);
+        }
+        assertEquals(1.0, WinChance.of(9999), 1e-9);
+        assertEquals(0.0, WinChance.of(-9999), 1e-9);
+        assertTrue(Double.isFinite(WinChance.drop(9999, -9999)));
+    }
+
+    @Test
     void dropPositiveForWorseMove() {
         assertTrue(WinChance.drop(100, -100) > 0);
         assertEquals(0.0, WinChance.drop(50, 50), 1e-12);
