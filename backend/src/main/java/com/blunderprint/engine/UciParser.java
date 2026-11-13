@@ -8,7 +8,16 @@ public final class UciParser {
 
     public record Info(int depth, Integer cp, Integer mate, String pv) {}
 
+    public record InfoMulti(int depth, int multipv, Integer cp, Integer mate, String pv) {}
+
     public static Optional<Info> parseInfo(String line) {
+        return parseInfoAny(line)
+            .filter(m -> m.multipv() == 1)
+            .map(m -> new Info(m.depth(), m.cp(), m.mate(), m.pv()));
+    }
+
+    /** Like parseInfo but keeps every multipv line (still drops bound lines and non-score lines). */
+    public static Optional<InfoMulti> parseInfoAny(String line) {
         if (!line.startsWith("info ")) return Optional.empty();
         String[] t = line.trim().split("\\s+");
         Integer depth = null, cp = null, mate = null;
@@ -33,8 +42,8 @@ public final class UciParser {
                 default -> { }
             }
         }
-        if (multipv != 1 || depth == null || (cp == null && mate == null)) return Optional.empty();
-        return Optional.of(new Info(depth, cp, mate, pv));
+        if (depth == null || (cp == null && mate == null)) return Optional.empty();
+        return Optional.of(new InfoMulti(depth, multipv, cp, mate, pv));
     }
 
     /** Mate in n (n>0) = 10000-n; being mated in n (n<=0) = -(10000-|n|). */
