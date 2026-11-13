@@ -142,6 +142,8 @@ export interface Drill {
 /** The engine line held back by play_move / try_move and shown one ply per next_move. */
 export interface PendingLine {
   /** Position before each ply. */
+  /** Position the player's move was made from. */
+  base: string;
   fens: string[];
   plies: MoveFacts[];
   you: "White" | "Black";
@@ -276,10 +278,11 @@ function plyOut(p: PendingLine, i: number) {
 }
 
 /** Hold the line for next_move; returns the first ply (not yet shown) or null. */
-function holdLine(state: CoachState, mine: MoveFacts, play: Awaited<ReturnType<typeof playOut>>, you: Side, follow: boolean) {
+function holdLine(state: CoachState, base: string, mine: MoveFacts, play: Awaited<ReturnType<typeof playOut>>, you: Side, follow: boolean) {
   state.pending = null;
   if (play.line.length === 0) return null;
   state.pending = {
+    base,
     fens: [mine.fenAfter, ...play.line.slice(0, -1).map((f) => f.fenAfter)],
     plies: play.line,
     you,
@@ -425,7 +428,7 @@ async function playMove(args: Record<string, unknown>, state: CoachState, fx: Co
     return { verdict: j.verdict, spoken, attempts: d.attempts, facts, lineLength: 0, evalSpoken: null, materialForYou: 0, next: null };
   }
   const play = await playOut(mine, you, fx, isOpen(d) && !solved ? ex.best : null);
-  const next = holdLine(state, mine, play, you, solved);
+  const next = holdLine(state, ex.fen, mine, play, you, solved);
   d.awaitingReply = sideToMove(play.finalFen) !== you;
   if (solved) {
     d.solved = true;
@@ -498,18 +501,20 @@ async function tryMove(args: Record<string, unknown>, state: CoachState, fx: Coa
   if (!d) return NO_DRILL;
   const input = String(args.move ?? "");
   const you = sideToMove(d.example.fen);
-  if (isGameOver(d.exploreFen)) return { error: "The game is over in this position. Say reset to go back to the drill." };
-  if (sideToMove(d.exploreFen) !== you) {
-    if (state.pending) return { error: "The line is still being shown. Call next_move to continue it, or say reset to go back to the drill." };
+  // A new move interrupts the line being shown: it is played from where that line began.
+  const from = state.pending ? state.pending.base : d.exploreFen;
+  if (isGameOver(from)) return { error: "The game is over in this position. Say reset to go back to the drill." };
+  if (!state.pending && sideToMove(from) !== you) {
     if (d.awaitingReply) return { error: "No engine reply is available here. Say reset to go back to the drill." };
     return { error: "It's the opponent's move in this position. Step forward, or reset to the drill." };
   }
-  const parsed = parseMove(d.exploreFen, input);
-  const mine = parsed ? describeMove(d.exploreFen, uciOf(parsed)) : null;
+  const parsed = parseMove(from, input);
+  const mine = parsed ? describeMove(from, uciOf(parsed)) : null;
   if (!parsed || !mine) return { verdict: "illegal", reason: `No single legal move matches "${input}"` };
-  await fx.flashMove(d.exploreFen, mine.uci);
+  state.pending = null;
+  await fx.flashMove(from, mine.uci);
   const play = await playOut(mine, you, fx, isOpen(d) ? d.example.best : null);
-  const next = holdLine(state, mine, play, you, true);
+  const next = holdLine(state, from, mine, play, you, true);
   d.exploreFen = mine.fenAfter; // follows the plies as next_move shows them
   d.awaitingReply = sideToMove(play.finalFen) !== you;
   return { yourMove: mine.spoken, facts: factsOut(mine), ...lineSummary(play), next };

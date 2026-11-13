@@ -61,19 +61,23 @@ export interface PlayerStatus {
   runId: string | null;
   queuePosition: number | null;
 }
-
 /** POST /analysis */
 export interface StartAnalysisResponse {
   runId: string;
-  reused?: boolean;
-  queuePosition?: number | null;
+  games: number;
+  moves: number;
+  jobsEnqueued: number;
+  reused: boolean;
+  /** 0 when the run is already being processed. */
+  queuePosition: number;
 }
 
 /** GET /analysis/{runId} */
 export interface AnalysisProgress {
-  status: string;
-  done: number;
-  total: number;
-  queuePosition?: number | null;
-  error?: string | null;
+  status: "RUNNING" | "SCORING" | "DONE" | "FAILED";
+  totalFens: number;
+  doneFens: number;
+  failedFens: number;
+  /** 0 when the run is being processed. */
+  queuePosition: number;
 }

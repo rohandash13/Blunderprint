@@ -696,15 +696,25 @@ describe("next_move (coach-paced lines)", () => {
     expect(of("animateLine")).toHaveLength(1); // only the one next_move call earlier
   });
 
-  it("try_move refuses while its line is still being shown, then works after", async () => {
+  it("a new try_move or play_move interrupts a pending line instead of being refused", async () => {
     const s = newCoachState();
-    const { fx } = effects(REPORT, LINE);
+    const { fx, of } = effects(REPORT, LINE);
     await call("start_drill", { tag: "hanging_piece" }, s, fx);
     await call("try_move", { move: "d4" }, s, fx);
+    await call("next_move", {}, s, fx);
     const r = await call("try_move", { move: "e4" }, s, fx);
-    expect(r.error).toMatch(/next_move/);
+    expect(r.error).toBeUndefined();
+    expect(r.yourMove).toBe("pawn to e4");
+    expect(of("flashMove").at(-1)!.args).toEqual([START, "e2e4"]); // played from where the old line began
+    expect(s.pending!.next).toBe(0);
     await drain(s, fx);
     expect((await call("try_move", { move: "Nf3" }, s, fx)).error).toBeUndefined();
+    // play_move while a try_move line is pending
+    await call("reset_position", {}, s, fx);
+    await call("try_move", { move: "d4" }, s, fx);
+    const p = await call("play_move", { move: "d4" }, s, fx);
+    expect(p.error).toBeUndefined();
+    expect(p.next).toMatchObject({ ply: 1 });
   });
 
   it("a solved drill follows the shown plies", async () => {

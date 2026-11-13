@@ -23,14 +23,14 @@ describe("api", () => {
     const f = mockFetch(200, { status: "none", runId: null, queuePosition: null });
     expect((await fetchStatus("alice")).status).toBe("none");
     expect(f).toHaveBeenCalledWith("/players/alice/status");
-    const g = mockFetch(200, { status: "RUNNING", done: 3, total: 10 });
-    expect((await fetchProgress("r/1")).done).toBe(3);
+    const g = mockFetch(200, { status: "RUNNING", totalFens: 10, doneFens: 3, failedFens: 0, queuePosition: 0 });
+    expect((await fetchProgress("r/1")).doneFens).toBe(3);
     expect(g).toHaveBeenCalledWith("/analysis/r%2F1");
   });
 
   it("startAnalysis posts the username and surfaces server error messages", async () => {
-    const f = mockFetch(200, { runId: "r1", reused: true });
-    expect(await startAnalysis("alice")).toEqual({ runId: "r1", reused: true });
+    const f = mockFetch(200, { runId: "r1", games: 40, moves: 1200, jobsEnqueued: 0, reused: true, queuePosition: 0 });
+    expect(await startAnalysis("alice")).toMatchObject({ runId: "r1", reused: true, queuePosition: 0 });
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/analysis");
     expect(init.method).toBe("POST");
