@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
 import { Chessboard } from "react-chessboard";
 import type { Arrow as CbArrow } from "react-chessboard/dist/chessboard/types";
 import { patternLabel } from "../coach/patternLabels";
@@ -10,26 +10,27 @@ import type { Coach } from "./useCoach";
 const LEVEL_WORD: Record<Level, string> = { slip: "Slip", tricky: "Tricky", deep: "Deep", unrated: "Not yet rated" };
 const MAX_BOARD = 600;
 
+/** Width of an element that may mount later (the board appears once a position is set). */
 function useWidth<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
+  const [el, setEl] = useState<T | null>(null);
   const [w, setW] = useState(0);
   useLayoutEffect(() => {
-    const el = ref.current;
     if (!el) return;
     const ro = new ResizeObserver(([e]) => setW(Math.floor(e.contentRect.width)));
     ro.observe(el);
     setW(Math.floor(el.getBoundingClientRect().width));
     return () => ro.disconnect();
-  }, []);
-  return [ref, w] as const;
+  }, [el]);
+  return [setEl, w] as const;
 }
 
 interface Props {
   coach: Coach;
   onChoose(): void;
+  onLevels(levels: Level[]): void;
 }
 
-export function Drill({ coach, onChoose }: Props) {
+export function Drill({ coach, onChoose, onLevels }: Props) {
   const { drill, lastShown, fen, arrows, flash, linePos, pendingLeft, caption, actions } = coach;
   const [wrapRef, wrapW] = useWidth<HTMLDivElement>();
   const ex = drill?.example ?? lastShown;
@@ -136,7 +137,7 @@ export function Drill({ coach, onChoose }: Props) {
         </div>
       </section>
 
-      <CoachPanel coach={coach} onChoose={onChoose} />
+      <CoachPanel coach={coach} onChoose={onChoose} onLevels={onLevels} />
     </div>
   );
 }

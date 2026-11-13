@@ -142,6 +142,7 @@ describe("describeResult", () => {
     expect(describeResult("get_hint", { hint: null, message: "No hints left. Offer to reveal the answer." })).toBe("No hints left. Offer to reveal the answer.");
     expect(describeResult("reveal_answer", { bestSpoken: "rook to e8", gameMoveSpoken: "king to h1" })).toBe("The best move was rook to e8. In the game you played king to h1.");
     expect(describeResult("next_move", { error: "There is no line to continue." })).toBe("There is no line to continue.");
+    expect(describeResult("start_drill", { error: 'pattern "positional" has no examples' })).toBe("No positions for this pattern at this difficulty. Turn on another level.");
     expect(describeResult("step_line", { ply: 1, total: 2 })).toBeNull();
     expect(describeResult("x", null)).toBeNull();
   });

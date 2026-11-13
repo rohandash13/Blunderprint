@@ -2,10 +2,12 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { difficultyNote } from "../coach/difficultyNote";
 import { LevelControl } from "./LevelControl";
 import type { Coach } from "./useCoach";
+import type { Level } from "../types";
 
 interface Props {
   coach: Coach;
   onChoose(): void;
+  onLevels(levels: Level[]): void;
 }
 
 function promptFor(coach: Coach): { head: string; body: string } {
@@ -26,7 +28,7 @@ function promptFor(coach: Coach): { head: string; body: string } {
   };
 }
 
-export function CoachPanel({ coach, onChoose }: Props) {
+export function CoachPanel({ coach, onChoose, onLevels }: Props) {
   const { drill, lines, status, levels, busy, actions } = coach;
   const [move, setMove] = useState("");
   const logRef = useRef<HTMLOListElement>(null);
@@ -80,7 +82,7 @@ export function CoachPanel({ coach, onChoose }: Props) {
         )}
       </div>
 
-      <LevelControl levels={levels} onChange={(lv) => void actions.changeLevels(lv)} compact />
+      <LevelControl levels={levels} onChange={onLevels} compact />
 
       <div className="transcript-wrap">
         <h3 className="transcript-title">{live ? "Conversation" : "Coach notes"}</h3>

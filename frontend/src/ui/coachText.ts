@@ -9,7 +9,10 @@ const sentence = (s: string) => (s && !/[.!?]$/.test(s) ? `${s}.` : s);
 export function describeResult(name: string, raw: unknown): string | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as R;
-  if (typeof r.error === "string") return sentence(cap(r.error));
+  if (typeof r.error === "string") {
+    if (/has no examples/.test(r.error)) return "No positions for this pattern at this difficulty. Turn on another level.";
+    return sentence(cap(r.error));
+  }
   const nextHint = r.next ? " Press Next to see the reply." : "";
 
   switch (name) {

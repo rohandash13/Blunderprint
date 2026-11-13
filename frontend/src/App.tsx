@@ -153,7 +153,7 @@ export default function App() {
       />
     );
   } else {
-    body = <Drill coach={coach} onChoose={() => go("focus")} />;
+    body = <Drill coach={coach} onChoose={() => go("focus")} onLevels={(lv) => void changeLevels(lv)} />;
   }
 
   return (
