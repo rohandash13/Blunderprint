@@ -15,7 +15,10 @@ function promptFor(coach: Coach): { head: string; body: string } {
   if (!d) {
     return {
       head: "Your move and the stronger one",
-      body: "Red is the move you played in the game; green is the stronger one. Drill this position to find it yourself.",
+      body:
+        coach.shownTag === "time_trouble"
+          ? "Red is the move you played with under 30 seconds left; green is the stronger one."
+          : "Red is the move you played in the game; green is the stronger one. Drill this position to find it yourself.",
     };
   }
   const side = d.example.fen.split(" ")[1] === "w" ? "White" : "Black";
@@ -71,7 +74,7 @@ export function CoachPanel({ coach, onChoose, onLevels }: Props) {
           <button type="button" className="btn" onClick={() => void actions.startDrill(drill.tag)} disabled={busy}>
             Next position
           </button>
-        ) : coach.lastShown && coach.shownTag ? (
+        ) : coach.lastShown && coach.shownTag && coach.shownTag !== "time_trouble" ? (
           <button type="button" className="btn btn-primary" onClick={() => actions.openExample(coach.shownTag!, coach.lastShown!)}>
             Drill this position
           </button>

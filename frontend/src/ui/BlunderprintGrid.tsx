@@ -41,13 +41,35 @@ export function BlunderprintGrid({ profile, levels, onLevels, onOpen, opening, e
     setRange({ first, last: Math.max(first, last) });
   };
 
+  /**
+   * When the sheet scrolls sideways, pad its end so the furthest scroll position is a whole number of
+   * games: the newest game then sits fully in view and no game is half under the sticky columns.
+   */
+  const alignEnd = () => {
+    const el = scrollRef.current;
+    const sheet = el?.querySelector<HTMLElement>(".grid-sheet");
+    const col = el?.querySelector<HTMLElement>(".th-game");
+    if (!el || !sheet || !col) return;
+    sheet.style.paddingRight = "";
+    if (el.scrollWidth <= el.clientWidth + 1) return;
+    const w = col.getBoundingClientRect().width;
+    const base = parseFloat(getComputedStyle(sheet).paddingRight) || 0;
+    const over = el.scrollWidth - el.clientWidth;
+    sheet.style.paddingRight = `${base + ((w - (over % w)) % w)}px`;
+  };
+
   // When the sheet is wider than the screen, open on the newest games.
   useEffect(() => {
     const el = scrollRef.current;
+    alignEnd();
     if (el && el.scrollWidth > el.clientWidth) el.scrollLeft = el.scrollWidth;
     measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    const onResize = () => {
+      alignEnd();
+      measure();
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, [profile]);
   const games = all.games;
   const visibleTotal = shown.rows.reduce((n, r) => n + r.visible, 0);

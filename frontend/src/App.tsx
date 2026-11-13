@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { fetchPosition, fetchProfile } from "./api";
+import { fetchPosition, fetchProfile, fetchReport } from "./api";
+import type { Example, Level } from "./types";
 import { flowReducer, initialFlow, type Step } from "./flow/flow";
 import type { GridGame, GridMark, Profile as ProfileData } from "./profile/types";
 import { Analyzing } from "./ui/Analyzing";
@@ -80,6 +81,25 @@ export default function App() {
     dispatch({ type: "chooseFocus", tag });
     await coach.actions.startDrill(tag);
   };
+  // Clock mistakes: the report only carries them with Slips on, so fetch them with Slips added and
+  // keep the ones at the selected levels. Same source for the plate's state and its "See the mistake".
+  const [clockExamples, setClockExamples] = useState<Example[] | null>(null);
+  const levelKey = coach.levels.join(",");
+  useEffect(() => {
+    setClockExamples(null);
+    if (!username) return;
+    const u = username;
+    const selected = levelKey.split(",") as Level[];
+    const withSlips = (["slip", "tricky", "deep"] as Level[]).filter((l) => l === "slip" || selected.includes(l));
+    fetchReport(u, withSlips)
+      .then((r) => {
+        if (!isCurrent(u)) return;
+        const exs = r?.patterns.find((p) => p.tag === "time_trouble")?.examples ?? [];
+        setClockExamples(exs.filter((e) => selected.includes(e.level)));
+      })
+      .catch(() => isCurrent(u) && setClockExamples([]));
+  }, [username, levelKey]);
+
   const show = async (tag: string) => {
     await coach.actions.showMistake(tag);
   };
@@ -160,6 +180,8 @@ export default function App() {
         onLevels={(lv) => void changeLevels(lv)}
         onDrill={(t) => void drillTag(t)}
         onShow={(t) => void show(t)}
+        clockExamples={clockExamples}
+        onShowExample={(t, ex) => coach.actions.showExample(t, ex)}
         busy={coach.busy}
       />
     );

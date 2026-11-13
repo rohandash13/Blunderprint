@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { fetchProfile } from "../api";
 import type { Profile } from "../profile/types";
 import { buildGrid, markSize, PICK_LEVELS } from "./gridLayout";
+import { useSnapHeight } from "./useSnapHeight";
 
 export const SAMPLE_PLAYER = "Knight_ofthelight73";
 
@@ -13,6 +14,7 @@ interface Props {
 
 export function Landing({ error, initial, onSubmit }: Props) {
   const [name, setName] = useState(initial);
+  const panelRef = useSnapHeight<HTMLDivElement>();
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (name.trim()) onSubmit(name.trim());
@@ -20,7 +22,8 @@ export function Landing({ error, initial, onSubmit }: Props) {
   return (
     <section className="landing">
       <div className="landing-row">
-      <div className="panel landing-panel">
+      <div className="panel landing-panel" ref={panelRef}>
+        <div className="snap-inner">
         <h1>See how you play, then fix it on your own positions</h1>
         <p className="lede">
           Blunderprint reads your recent rated Lichess games, finds the mistakes you keep repeating, and coaches you through those
@@ -61,6 +64,7 @@ export function Landing({ error, initial, onSubmit }: Props) {
             Try {SAMPLE_PLAYER}
           </button>
         </p>
+        </div>
       </div>
       <DemoStrip />
       </div>

@@ -1,5 +1,9 @@
 import { describeEta, fmtInt } from "./format";
 import type { AnalysisView } from "./useAnalysis";
+import { useSnapHeight } from "./useSnapHeight";
+
+const FILL_ROWS = 4;
+const FILL_COLS = 40;
 
 interface Props {
   username: string;
@@ -14,6 +18,10 @@ export function Analyzing({ username, view, onCancel }: Props) {
   const queued = view.queuePosition > 0;
   const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
   const scoring = p?.status === "SCORING";
+  const panelRef = useSnapHeight<HTMLDivElement>();
+  // Decorative: the sheet fills in row by row in step with the positions done; it shows no data.
+  const cells = FILL_ROWS * FILL_COLS;
+  const filled = total > 0 ? Math.min(cells, Math.floor((done / total) * cells)) : 0;
 
   let headline = `Reading ${username}'s games`;
   if (queued) headline = `${username} is in the queue`;
@@ -27,7 +35,8 @@ export function Analyzing({ username, view, onCancel }: Props) {
 
   return (
     <section className="analyzing">
-      <div className="panel analyzing-panel" aria-busy="true">
+      <div className="panel analyzing-panel" aria-busy="true" ref={panelRef}>
+        <div className="snap-inner">
         <h1>{headline}</h1>
         <p className="lede" aria-live="polite">
           {detail}
@@ -60,6 +69,14 @@ export function Analyzing({ username, view, onCancel }: Props) {
             )}
           </p>
         </div>
+        <div className="fill">
+          <div className="fill-sheet" aria-hidden="true">
+            {Array.from({ length: cells }, (_, n) => (
+              <i key={n} className={n < filled ? "is-on" : undefined} />
+            ))}
+          </div>
+          <p className="fill-label">Filling in your wallchart</p>
+        </div>
         {view.stalled && (
           <p className="form-error" role="status">
             The server isn't answering right now. Still trying every few seconds.
@@ -77,6 +94,7 @@ export function Analyzing({ username, view, onCancel }: Props) {
         <button type="button" className="btn" onClick={onCancel}>
           Choose another player
         </button>
+        </div>
       </div>
     </section>
   );

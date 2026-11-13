@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { fetchProfile, fetchReport } from "../api";
-import { handleFunctionCall, newCoachState, openPosition, PLAYED, type Arrow, type CoachEffects } from "../coach/functions";
+import { BEST, handleFunctionCall, newCoachState, openPosition, PLAYED, type Arrow, type CoachEffects } from "../coach/functions";
+import { spokenMove } from "../chess/facts";
 import { AnimationQueue } from "../coach/animQueue";
 import { LineHistory, type StepDirection } from "../coach/lineHistory";
 import { DEFAULT_CONFIG, buildSettings } from "../voice/settings";
@@ -406,7 +407,31 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
   }
 
   const startDrill = (tag: string) => run("start_drill", { tag });
-  const showMistake = (tag: string) => run("show_mistake", { tag, index: 0 });
+  /** "See the mistake": a shown example replaces any drill, so the board header matches what is shown. */
+  const showMistake = (tag: string) => {
+    coach.current.drill = null;
+    return run("show_mistake", { tag, index: 0 });
+  };
+
+  /**
+   * Show one specific example (played move red, stronger move green) without drilling it. Used for
+   * clock mistakes, whose examples come from a separate report request and are never drilled.
+   */
+  function showExample(tag: string, ex: Example) {
+    coach.current.drill = null;
+    coach.current.pending = null;
+    coach.current.lastShown = ex;
+    effects.showPosition(ex.fen, [arrowOf(ex.played, PLAYED), arrowOf(ex.best, BEST)]);
+    const text = describeResult("show_mistake", { playedSpoken: spokenMove(ex.fen, ex.played), bestSpoken: spokenMove(ex.fen, ex.best) });
+    if (text) {
+      setCaption({ text, ply: null });
+      frameCaptions.current = new Map([[0, text]]);
+      if (statusRef.current !== "live") addLine("coach", text);
+    }
+    setShownTag(tag);
+    optsRef.current.onBoard?.();
+    bump();
+  }
 
   /** A grid mark: open that exact position as a drill. */
   function openExample(tag: string, ex: Example) {
@@ -479,6 +504,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
       setProfile,
       startDrill,
       showMistake,
+      showExample,
       openExample,
     },
   };
