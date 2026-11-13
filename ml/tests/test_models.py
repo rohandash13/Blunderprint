@@ -1,8 +1,11 @@
 import numpy as np
 import torch
 
-from blunderprint_ml.models import MLP, LinearModel, load_checkpoint, masked_top1
-from blunderprint_ml.train import train
+import chess
+
+from blunderprint_ml.encoding import encode_board
+from blunderprint_ml.models import MLP, LinearModel, ResCNN, load_checkpoint, masked_top1
+from blunderprint_ml.train import train, unpack_bits
 
 
 def test_forward_shapes():
@@ -10,6 +13,7 @@ def test_forward_shapes():
     rb = torch.tensor([0, 3, 9])
     assert LinearModel()(x, rb).shape == (3, 4096)
     assert MLP(hidden=32)(x, rb).shape == (3, 4096)
+    assert ResCNN(blocks=2, ch=16, head_ch=8)(x, rb).shape == (3, 4096)
 
 
 def test_masked_top1_only_considers_legal_moves():
@@ -46,3 +50,29 @@ def test_training_improves_and_checkpoint_roundtrips(tmp_path):
     model = load_checkpoint(str(tmp_path / "m.pt"))
     out = model(torch.zeros(2, 772, dtype=torch.uint8), torch.tensor([1, 2]))
     assert out.shape == (2, 4096)
+
+
+def test_cnn_planes_put_pieces_on_their_squares():
+    x = torch.from_numpy(encode_board(chess.Board())).unsqueeze(0)
+    planes = x[:, :768].view(1, 12, 8, 8)
+    assert planes[0, 5, 0, 4] == 1          # white king (plane 5) on e1 = rank 0, file 4
+    assert planes[0, 0, 1].sum() == 8       # eight white pawns on rank 2
+    assert planes[0, 10, 7, 3] == 1         # black queen (plane 6 + 4) on d8
+
+
+def test_unpack_bits_matches_numpy():
+    X = (np.random.default_rng(0).random((5, 772)) < 0.1).astype(np.uint8)
+    packed = torch.from_numpy(np.packbits(X, axis=1))
+    assert torch.equal(unpack_bits(packed), torch.from_numpy(X))
+
+
+def test_cnn_trains_and_fp16_checkpoint_roundtrips(tmp_path):
+    _tiny_dataset(tmp_path / "d")
+    hist = train("cnn", str(tmp_path / "d"), str(tmp_path / "c.pt"), epochs=6, batch=64, lr=3e-3,
+                 blocks=1, ch=16, head_ch=8, device="cpu", half_weights=True)
+    assert hist["val_top1"][-1] > 0.5
+    ck = torch.load(tmp_path / "c.pt", weights_only=True)
+    assert ck["state_dict"]["head.4.weight"].dtype == torch.float16
+    model = load_checkpoint(str(tmp_path / "c.pt"))
+    assert next(model.parameters()).dtype == torch.float32
+    assert model(torch.zeros(2, 772, dtype=torch.uint8), torch.tensor([1, 2])).shape == (2, 4096)
