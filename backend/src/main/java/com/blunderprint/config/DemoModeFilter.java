@@ -10,7 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** In public-demo mode, blocks /admin/** and analysis writes (POST /analysis, /analysis/**). */
+/** In public-demo mode, blocks /admin/** and analysis writes under /analysis/** (POST /analysis itself stays open). */
 @Component
 public class DemoModeFilter extends OncePerRequestFilter {
     private final boolean demo;
@@ -37,9 +37,11 @@ public class DemoModeFilter extends OncePerRequestFilter {
         int semi = path.indexOf(';');
         if (semi >= 0) path = path.substring(0, semi);
         if (path.equals("/admin") || path.startsWith("/admin/")) return true;
-        boolean analysis = path.equals("/analysis") || path.startsWith("/analysis/");
         String m = req.getMethod();
         boolean readOnly = m.equals("GET") || m.equals("HEAD") || m.equals("OPTIONS");
-        return analysis && !readOnly;
+        if (readOnly) return false;
+        // POST /analysis (optionally with a trailing slash) is the public entry point, gated by AnalysisGate.
+        if (path.equals("/analysis") || path.equals("/analysis/")) return false;
+        return path.startsWith("/analysis/");
     }
 }

@@ -2,6 +2,8 @@
   "rewrites": [
     { "source": "/players/:path*", "destination": "https://blunderprint-api-as12.onrender.com/players/:path*" },
     { "source": "/engine/:path*", "destination": "https://blunderprint-api-as12.onrender.com/engine/:path*" },
-    { "source": "/voice/:path*", "destination": "https://blunderprint-api-as12.onrender.com/voice/:path*" }
+    { "source": "/voice/:path*", "destination": "https://blunderprint-api-as12.onrender.com/voice/:path*" },
+    { "source": "/analysis", "destination": "https://blunderprint-api-as12.onrender.com/analysis" },
+    { "source": "/analysis/:path*", "destination": "https://blunderprint-api-as12.onrender.com/analysis/:path*" }
   ]
 }

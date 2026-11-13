@@ -10,6 +10,8 @@ export interface MoveFacts {
   check: boolean;
   mate: boolean;
   attacks: { square: string; piece: string }[];
+  /** Pieces attacked that make the move a fork: the king, a more valuable piece, or an undefended one. */
+  forkTargets: string[];
   fork: boolean;
   fenAfter: string;
   materialAfter: number;
@@ -70,14 +72,14 @@ export function describeMove(fen: string, uci: string): MoveFacts | null {
   const oppColor: Color = moverColor === "w" ? "b" : "w";
   const landed = chess.get(m.to as Square)!; // promoted piece if promotion
   const attacks: { square: string; piece: string }[] = [];
-  let forkTargets = 0;
+  const forkTargets: string[] = [];
   for (const row of chess.board()) {
     for (const sq of row) {
       if (!sq || sq.color !== oppColor) continue;
       if (!chess.attackers(sq.square, moverColor).includes(m.to as Square)) continue;
       attacks.push({ square: sq.square, piece: NAMES[sq.type] });
       const undefended = chess.attackers(sq.square, oppColor).length === 0;
-      if (sq.type === "k" || VALUES[sq.type] > VALUES[landed.type] || undefended) forkTargets++;
+      if (sq.type === "k" || VALUES[sq.type] > VALUES[landed.type] || undefended) forkTargets.push(NAMES[sq.type]);
     }
   }
   const fenAfter = chess.fen();
@@ -91,8 +93,9 @@ export function describeMove(fen: string, uci: string): MoveFacts | null {
     check,
     mate,
     attacks,
+    forkTargets,
     // A king "fork" is not a tactic worth naming, so kings never fork.
-    fork: landed.type !== "k" && forkTargets >= 2,
+    fork: landed.type !== "k" && forkTargets.length >= 2,
     fenAfter,
     materialAfter: material(fenAfter).diff,
   };

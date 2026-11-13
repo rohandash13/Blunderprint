@@ -22,8 +22,8 @@ class DemoModeFilterTest {
     void blocksAdminAndAnalysisWritesInDemo() throws Exception {
         for (var c : new String[][] {
             {"GET", "/admin/workers/stats"}, {"POST", "/admin/workers"}, {"POST", "/admin/players/x/rescore"},
-            {"POST", "/analysis"}, {"POST", "/analysis/"}, {"POST", "/analysis/5/reenqueue"},
-            {"POST", "//analysis"}, {"POST", "/admin"}}) {
+            {"POST", "/analysis/5/reenqueue"}, {"POST", "//analysis/5/reenqueue"}, {"POST", "/analysis/5/other"},
+            {"POST", "/admin"}}) {
             var r = run(true, c[0], c[1]);
             assertEquals(403, r.status(), c[0] + " " + c[1]);
             assertFalse(r.passed());
@@ -35,7 +35,7 @@ class DemoModeFilterTest {
     void permitsReadEndpointsInDemo() throws Exception {
         for (var c : new String[][] {
             {"GET", "/players/x/report"}, {"GET", "/players/x/mistakes"}, {"GET", "/analysis/5"},
-            {"POST", "/engine/analyze"}, {"GET", "/health"}, {"GET", "/voice/token"}, {"GET", "/administrator"}}) {
+            {"POST", "/engine/analyze"}, {"POST", "/analysis"}, {"POST", "/analysis/"}, {"POST", "//analysis"}, {"GET", "/health"}, {"GET", "/voice/token"}, {"GET", "/administrator"}}) {
             var r = run(true, c[0], c[1]);
             assertTrue(r.passed(), c[0] + " " + c[1]);
             assertEquals(200, r.status());

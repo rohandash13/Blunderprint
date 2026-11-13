@@ -1,0 +1,68 @@
+{
+  "url": "http://localhost:5173/",
+  "font": "Self-hosted Archivo v25",
+  "captured": "2026-11-13",
+  "renderer": "Google Chrome headless, CDP, deviceScaleFactor=1",
+  "images": [
+    {
+      "file": "desktop.png",
+      "sha256": "dbcf61dfe4d4ccb6fa73855ecc0c5ccf10bcdd41de20a879d7da90fbbaf073ca",
+      "viewportWidth": 1440,
+      "source": "Local UI and local backend, public Knight_ofthelight73 profile"
+    },
+    {
+      "file": "mobile.png",
+      "sha256": "23305e0b129fa7e4b02e986e8aa0cb03ec326177e20192a0eec3eb15ddc9690a",
+      "viewportWidth": 390,
+      "source": "Local UI and local backend, public Knight_ofthelight73 profile"
+    },
+    {
+      "file": "landing.png",
+      "sha256": "e4f189df6ae62cfdebffafefa1cfc17f924595621a99388d31f2daea2bc98e3f",
+      "viewportWidth": 1440,
+      "source": "Local UI and local backend, public Knight_ofthelight73 profile"
+    },
+    {
+      "file": "landing-mobile.png",
+      "sha256": "f683f4bca44bfafa6aefcfc535848fecdbb75f7e285a949836f93fdda5ab0da7",
+      "viewportWidth": 390,
+      "source": "Local UI and local backend, public Knight_ofthelight73 profile"
+    },
+    {
+      "file": "drill-desktop.png",
+      "sha256": "4c5d56eb72a77246f252559eb1f1ae8199cf9a7d4e277416dd150e7320cb7135",
+      "viewportWidth": 1440,
+      "source": "Local UI and local backend, public Knight_ofthelight73 profile"
+    },
+    {
+      "file": "drill-mobile.png",
+      "sha256": "6d88fc8bddf5ca8de6bed99204af0dbaf226d24c98b1baf651a2033e6998e3ac",
+      "viewportWidth": 390,
+      "source": "Local UI and local backend, public Knight_ofthelight73 profile"
+    },
+    {
+      "file": "focus.png",
+      "sha256": "93033a6343ebf025d8f0e1cbd6ae88409b1db8b515762bbc45c9d2d107c2f3f3",
+      "viewportWidth": 1440,
+      "source": "Local UI and local backend, public Knight_ofthelight73 profile"
+    },
+    {
+      "file": "focus-mobile.png",
+      "sha256": "8fd365927cdab1136b1c03d60e52e33559580466b64746c23b0bf13bf8d148d4",
+      "viewportWidth": 390,
+      "source": "Local UI and local backend, public Knight_ofthelight73 profile"
+    },
+    {
+      "file": "analyzing.png",
+      "sha256": "de20843dbb588ae5a9c12133e7aef58e68356358486a6aee212400538ad0db74",
+      "viewportWidth": 1440,
+      "source": "Local UI with deterministic mocked analysis-status responses"
+    },
+    {
+      "file": "analyzing-mobile.png",
+      "sha256": "0ed1ef0aeea8f356ff0ad29a4495637524e0818725041f84ba3d305179ee3909",
+      "viewportWidth": 390,
+      "source": "Local UI with deterministic mocked analysis-status responses"
+    }
+  ]
+}

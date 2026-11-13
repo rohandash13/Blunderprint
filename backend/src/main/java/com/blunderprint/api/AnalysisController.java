@@ -1,7 +1,11 @@
 package com.blunderprint.api;
 
+import com.blunderprint.analysis.AnalysisGate;
 import com.blunderprint.analysis.AnalysisService;
+import com.blunderprint.ingest.NoRatedGamesException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import com.blunderprint.ingest.IngestService;
+import com.blunderprint.report.ProfileService;
 import com.blunderprint.report.ReportService;
 import com.blunderprint.store.JobQueueRepository;
 import com.blunderprint.worker.WorkerPool;
@@ -25,9 +29,21 @@ public class AnalysisController {
     private final WorkerPool pool;
     private final int defaultDepth;
     private final ReportService reports;
+    private final ProfileService profiles;
+    private final AnalysisGate gate;
+    private final JdbcTemplate jdbc;
+    private final boolean demo;
+    private final int maxGames;
 
     public AnalysisController(IngestService ingest, AnalysisService analysis, JobQueueRepository queue,
-                              WorkerPool pool, @Value("${engine.depth}") int defaultDepth, ReportService reports) {
+                              WorkerPool pool, @Value("${engine.depth}") int defaultDepth, ReportService reports,
+                              ProfileService profiles, AnalysisGate gate, JdbcTemplate jdbc,
+                              @Value("${DEMO_MODE:false}") boolean demo, @Value("${analysis.max-games:40}") int maxGames) {
+        this.gate = gate;
+        this.jdbc = jdbc;
+        this.demo = demo;
+        this.maxGames = maxGames;
+        this.profiles = profiles;
         this.ingest = ingest;
         this.analysis = analysis;
         this.queue = queue;
@@ -48,6 +64,19 @@ public class AnalysisController {
             .orElse(ResponseEntity.notFound().build());
     }
 
+    @GetMapping("/players/{username}/profile")
+    public ResponseEntity<?> profile(@PathVariable String username) {
+        return profiles.profile(username).<ResponseEntity<?>>map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/players/{username}/positions/{gameId}/{ply}")
+    public ResponseEntity<?> position(@PathVariable String username, @PathVariable String gameId,
+                                      @PathVariable int ply) {
+        return profiles.position(username, gameId, ply).<ResponseEntity<?>>map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
+    }
+
     @GetMapping("/players/{username}/mistakes")
     public java.util.List<ReportService.MistakeRow> mistakes(@PathVariable String username) {
         return reports.mistakes(username);
@@ -58,11 +87,70 @@ public class AnalysisController {
         return Map.of("ok", true);
     }
 
+    public record StartResponse(UUID runId, int games, int moves, int jobsEnqueued, boolean reused, int queuePosition) {}
+
+    private static final java.util.regex.Pattern LICHESS_NAME = java.util.regex.Pattern.compile("[A-Za-z0-9_-]{1,30}");
+
+    private static ResponseEntity<Map<String, String>> noGames(String username) {
+        return ResponseEntity.status(404).body(Map.of("error", "No rated games found for " + username));
+    }
+
     @PostMapping("/analysis")
-    public ResponseEntity<IngestService.IngestResult> start(@RequestBody AnalyzeRequest req) {
-        int max = req.maxGames() == null ? 100 : req.maxGames();
-        int depth = req.depth() == null ? defaultDepth : req.depth();
-        return ResponseEntity.accepted().body(ingest.ingest(req.username(), max, depth));
+    public ResponseEntity<?> start(@RequestBody AnalyzeRequest req, jakarta.servlet.http.HttpServletRequest http) {
+        String username = req.username() == null ? "" : req.username().trim();
+        if (username.isEmpty()) return ResponseEntity.badRequest().body(Map.of("error", "username is required"));
+        if (!demo) {
+            int max = req.maxGames() == null ? 100 : req.maxGames();
+            int depth = req.depth() == null ? defaultDepth : req.depth();
+            return run(username, max, depth, null);
+        }
+        String ip = com.blunderprint.config.ClientIp.of(http);
+        try {
+            gate.tryAttempt(ip);
+        } catch (AnalysisGate.CapExceededException e) {
+            return ResponseEntity.status(429).body(Map.of("error", e.getMessage()));
+        }
+        if (!LICHESS_NAME.matcher(username).matches()) {
+            return ResponseEntity.status(404).body(Map.of("error", "Not a valid Lichess username"));
+        }
+        synchronized (gate.lockFor(username)) {
+            if (gate.isKnownMissing(username)) return noGames(username);
+            var reuse = gate.findReusable(username);
+            if (reuse.isPresent()) {
+                var r = reuse.get();
+                return ResponseEntity.accepted().body(new StartResponse(r.runId(), r.games(), r.moves(), 0, true,
+                    r.queuePosition()));
+            }
+            AnalysisGate.Reservation slot;
+            try {
+                slot = gate.reserve(ip);
+            } catch (AnalysisGate.CapExceededException e) {
+                return ResponseEntity.status(429).body(Map.of("error", e.getMessage()));
+            }
+            return run(username, maxGames, defaultDepth, slot);
+        }
+    }
+
+    private ResponseEntity<?> run(String username, int max, int depth, AnalysisGate.Reservation slot) {
+        try {
+            var res = ingest.ingest(username, max, depth);
+            return ResponseEntity.accepted().body(new StartResponse(res.runId(), res.games(), res.moves(),
+                res.jobsEnqueued(), false, gate.queuePosition(res.runId())));
+        } catch (NoRatedGamesException e) {
+            if (slot != null) {
+                gate.release(slot);
+                gate.markMissing(username);
+            }
+            return noGames(username);
+        } catch (RuntimeException e) {
+            if (slot != null) gate.release(slot);
+            throw e;
+        }
+    }
+
+    @GetMapping("/players/{username}/status")
+    public AnalysisGate.PlayerStatus playerStatus(@PathVariable String username) {
+        return gate.playerStatus(username);
     }
 
     @GetMapping("/analysis/{runId}")

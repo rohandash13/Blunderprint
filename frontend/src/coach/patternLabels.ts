@@ -1,5 +1,3 @@
-import type { Pattern } from "../types";
-
 export const PATTERN_LABELS: Record<string, { name: string; description: string }> = {
   hanging_piece: { name: "Hanging pieces", description: "Leaving a piece where it can be taken for free" },
   missed_tactic: { name: "Missed tactics", description: "A capture or check that wins material was available" },
@@ -15,7 +13,7 @@ export function patternLabel(tag: string): { name: string; description: string }
 }
 
 /** Named patterns by count (descending), "other" always last. */
-export function sortPatterns(patterns: Pattern[]): Pattern[] {
-  const rank = (p: Pattern) => (p.tag === "other" ? 1 : 0);
+export function sortPatterns<T extends { tag: string; count: number }>(patterns: T[]): T[] {
+  const rank = (p: T) => (p.tag === "other" ? 1 : 0);
   return [...patterns].sort((a, b) => rank(a) - rank(b) || b.count - a.count);
 }

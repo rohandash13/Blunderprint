@@ -1,0 +1,49 @@
+# Club Wallchart
+
+Blunderprint treats a player's games as a tournament wallchart: recurring patterns down the side, recent games across, and every mistake a mark that opens the position. The experience moves from entering a Lichess name through analysis, Profile, Choose focus, and Drill. Chess facts come from code; the coach narrates them and gives hints before answers.
+
+The binding direction lives in `.impeccable/surfaces/frontend-src-app-tsx.md`; product behavior lives in `PRODUCT.md` and the coach UI design spec. This document describes the implementation in `frontend/src/ui/`.
+
+## Palette and structure
+
+| Role | Token / value | Use |
+|---|---|---|
+| Felt | `--felt: #1f4d3a` | Navigation rail, primary action |
+| On felt | `#f1f5f2`, secondary `#b4d9c2` | Rail text and states |
+| Paper | `--paper: #fcfdfd` | Panels and controls |
+| Ground | `--ground: #e8ecea` | Main surface |
+| Grid | Felt at 7.5% opacity | Visible 24px cell armature |
+| Ink | `--ink: #1a1a1a` | Text, rules, tricky marks |
+| Secondary ink | `--mute: #545e5a` | Descriptions, scope notes |
+| Marker red | `--red: #d7263d` | Deep marks and line arrows |
+| Highlighter | `--hl: #f2d94e` | Current step, selected levels, worst row |
+| Classic board | `#f0d9b5` / `#b58863` | Standard chessboard squares |
+
+Desktop uses a 220px felt rail and 24px content inset: the main content begins at x=244 at a 1440px viewport. Paper edges and large gaps follow the cell grid. Panels use restrained soft shadows, 4px corners and thin inset rules. The grid is structural; it does not force long text onto an oversized line pitch. `useSnapHeight` rounds selected text panels to whole cells after layout.
+
+At 760px and below, the rail becomes a compact two-row sticky header, content has 16px side insets, and panels stack. Grid tracks explicitly reserve the header's natural height. Focus plates fill the phone's content width rather than applying desktop whole-plate rounding.
+
+## Typography and browser surfaces
+
+Archivo is the single workhorse face, with weight and case carrying hierarchy. The Latin normal variable font is self-hosted in `frontend/public/fonts/` with its OFL license and source provenance. Body text is 14px, explanatory text 16px, desktop headings 28px and phone headings 24px. Figures use tabular numerals at the surrounding text size.
+
+Selection uses highlighter yellow, carets use ink, focus outlines follow the palette, link underlines have deliberate offsets, and scrollbars use the sheet's rule colors. Icons are authored SVGs in `Icons.tsx`; pieces remain traditional. Motion uses an exponential ease-out and respects reduced-motion preferences.
+
+## Screens and interactions
+
+- **Landing:** a plain username form, sample-player link, limits explained in context, and a read-only strip of the sample player's real wallchart. The strip disappears cleanly when its data is unavailable. Heading text keeps normal leading while the panel snaps to the cell grid.
+- **Analyzing:** the panel shares the main content column. Queue position, engine progress, scoring and recoverable polling failures have explicit copy. A decorative sheet fills as positions are checked; it is hidden from assistive technology and is not a data chart.
+- **Profile:** player name and profile/change links form one tight group. Ratings, record and dates orient the player before the written coaching summary. Strengths, leaks and the recommendation explain their evidence and sample size. The wallchart is the main way into a specific position.
+- **Wallchart:** patterns are rows, recent games are columns, and cost sizes each mark. Hollow ink means slip, solid ink tricky, red deep, and a dashed outline means unrated. Multiple marks are indicated by a ring. The level control re-marks the sheet and picks the most relevant row. Row totals cover all analyzed games; control counts cover the displayed recent games. On phones, a one-cell gutter protects the sticky pattern/total rule, complete game columns scroll, and a range label explains where the player is.
+- **Choose focus:** fixed pattern furniture includes name, description, count, last seen, level mix and actions. Kind appears only for mixed-kind patterns. The difficulty control and its count scope align with the plates' right edge on desktop. Clock-pressure examples are fetched with slips included, then filtered to the player's selected levels. “See the mistake” works for those positions; Drill remains disabled with an explanation that clock mistakes are about time rather than position. Obsolete responses cannot replace examples after a player or level change.
+- **Drill:** board and coach sit side by side on desktop and stack on phones. Typed input, hint, reveal and reset support the same chess functions as voice. A proposed move plays first; Next advances exactly one engine ply with an arrow and deterministic caption. Previous/Next and arrow keys revisit shown frames with their captions. Inputs keep their own arrow-key behavior. The transcript remains visible.
+
+## States and accessibility
+
+Standard buttons, inputs and a multi-select segmented level control carry the interface. At least one difficulty stays enabled. Disabled actions have an honest reason; loading, empty, missing-profile, API and polling failures have recovery paths. Step headings receive focus after navigation, progress is announced politely, and game marks have descriptive accessible names. Color is reinforced with labels, outline/fill, selection state and captions.
+
+Voice requires Chrome, microphone permission and a valid token. The UI supports typing and buttons throughout. Live voice and production analysis verification remain a post-merge acceptance step; local screenshot review does not substitute for them.
+
+## Finish record
+
+The finish review and screenshot provenance are in `docs/design/reviews/2026-11-13-coach-ui-v3.md`. Captures cover 1440px desktop and 390px phone layouts, including a real local profile, focus, and a line paused after one reply. Analysis-progress captures use a deterministic local fetch fixture and are labeled as such. No generated marketing images or invented player evidence are used.

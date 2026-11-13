@@ -6,6 +6,11 @@ import { describeEval } from "../chess/evalText";
 import { hintLadder } from "./hints";
 import type { StepDirection } from "./lineHistory";
 import { difficultyNote } from "./difficultyNote";
+import { plyCaption } from "../chess/plyCaption";
+import { patternLabel } from "./patternLabels";
+import { profileInsights } from "../profile/profileInsights";
+import { profileSummary } from "../profile/profileSummary";
+import type { Profile } from "../profile/types";
 import type { Example, Level, Report } from "../types";
 
 /** [fromSquare, toSquare, cssColor] */
@@ -13,6 +18,8 @@ export type Arrow = [string, string, string];
 export const BEST = "rgb(40,160,80)";
 export const PLAYED = "rgb(200,50,50)";
 export const REPLY = "rgb(50,100,210)";
+/** Marker red: the ply currently being explained. */
+export const CURRENT = "rgb(215,38,61)";
 
 export interface FunctionDef {
   name: string;
@@ -24,8 +31,13 @@ const NO_ARGS = { type: "object" as const, properties: {} };
 
 export const FUNCTION_DEFS: FunctionDef[] = [
   {
+    name: "get_profile",
+    description: "Get an overview of the player: a written summary, their ratings, strengths, leaks and the pattern worth working on first. Call this first in a session, then give a two to three sentence overview and offer focus choices.",
+    parameters: NO_ARGS,
+  },
+  {
     name: "get_report",
-    description: "Get the player's Blunderprint report: their recurring mistake patterns, each with a friendly name, description, count and average centipawn loss. Call this first, before discussing the player's play.",
+    description: "Get the player's Blunderprint report: their recurring mistake patterns, each with a friendly name, description, count and average centipawn loss. Call it before going into detail on specific patterns.",
     parameters: NO_ARGS,
   },
   {
@@ -51,7 +63,7 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   },
   {
     name: "play_move",
-    description: "Play the move the player said as an attempt at the current drill. The move and the engine's best continuation play out on the board. Returns a verdict (best, repeated_mistake, other, illegal) computed by code, the line as spoken facts, and an eval from the player's side. Wrong attempts never reveal the answer. Attempts are unlimited.",
+    description: "Play the move the player said as an attempt at the current drill. Only the player's move is shown; the engine's continuation waits for next_move. Returns a verdict (best, repeated_mistake, other, illegal) computed by code, the player's move as facts, the first reply as next, and an eval from the player's side. Wrong attempts never reveal the answer. Attempts are unlimited.",
     parameters: {
       type: "object",
       properties: { move: { type: "string", description: "The move exactly as the player said it, e.g. 'knight f3' or 'Nf3'" } },
@@ -78,7 +90,7 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   },
   {
     name: "try_move",
-    description: "Explore a what-if from the current exploration position: plays the move and the engine's best continuation on the board, returning the line as spoken facts and an eval from the player's side. Does not count as a drill attempt.",
+    description: "Explore a what-if from the current exploration position: plays the move, returns it as facts with the first reply as next, and holds the engine's continuation for next_move. Does not count as a drill attempt.",
     parameters: {
       type: "object",
       properties: { move: { type: "string", description: "The move as the player said it" } },
@@ -108,6 +120,11 @@ export const FUNCTION_DEFS: FunctionDef[] = [
       required: ["direction"],
     },
   },
+  {
+    name: "next_move",
+    description: "Show the next move of the line after play_move or try_move: one move at a time, with an arrow. Returns that move's facts and a caption; explain only that move in one sentence. Call again until done is true, unless the player interrupts. The eval comes with the last move.",
+    parameters: NO_ARGS,
+  },
 ];
 
 export interface Drill {
@@ -122,8 +139,26 @@ export interface Drill {
   awaitingReply?: boolean;
 }
 
+/** The engine line held back by play_move / try_move and shown one ply per next_move. */
+export interface PendingLine {
+  /** Position the player's move was made from. */
+  base: string;
+  /** Position before each ply. */
+  fens: string[];
+  plies: MoveFacts[];
+  you: "White" | "Black";
+  /** Index of the next ply to show. */
+  next: number;
+  evalSpoken: string | null;
+  /** Whether the explore position follows the shown plies (try_move, a solved drill). */
+  follow: boolean;
+}
+
 export interface CoachState {
   report: Report | null;
+  profile: Profile | null;
+  /** Line waiting for next_move. */
+  pending: PendingLine | null;
   drill: Drill | null;
   /** Last example put on the board, so explain_line works outside a drill. */
   lastShown: Example | null;
@@ -138,6 +173,7 @@ export interface EngineAnalysis {
 }
 
 export interface CoachEffects {
+  fetchProfile(): Promise<Profile | null>;
   fetchReport(levels: Level[]): Promise<Report | null>;
   showPosition(fen: string, arrows?: Arrow[]): void;
   /** Steps the board through the moves; `colors` is one color for all moves or one per move. */
@@ -156,7 +192,7 @@ export const PLAYOUT_PLIES = 9;
 const PICKABLE: Level[] = ["slip", "tricky", "deep"];
 
 export function newCoachState(): CoachState {
-  return { report: null, drill: null, lastShown: null, drilled: new Set(), levels: ["tricky", "deep"] };
+  return { report: null, profile: null, pending: null, drill: null, lastShown: null, drilled: new Set(), levels: ["tricky", "deep"] };
 }
 
 const PATTERN_INFO: Record<string, { name: string; description: string }> = {
@@ -195,17 +231,19 @@ const sideToMove = (fen: string): "White" | "Black" => (fen.split(" ")[1] === "w
 const isGameOver = (fen: string) => { try { return new Chess(fen).isGameOver(); } catch { return false; } };
 const isOpen = (d: Drill) => !d.solved && !d.revealed;
 
+type Side = "White" | "Black";
+
 /**
- * After the player's move (already flashed), play the engine continuation and describe it.
+ * After the player's move (already flashed), compute the engine continuation without showing it.
  * `you` is the drill side. `hideBest`, when set, cuts the line before the player ply that would play it.
  */
-async function playOut(mine: MoveFacts, you: "White" | "Black", fx: CoachEffects, hideBest: string | null = null) {
+async function playOut(mine: MoveFacts, you: Side, fx: CoachEffects, hideBest: string | null = null) {
   if (mine.mate) {
-    return { engineLine: [], evalForYou: 10000, evalSpoken: "Checkmate, you win", materialForYou: forYou(mine.materialAfter, you), finalFen: mine.fenAfter };
+    return { line: [] as MoveFacts[], evalSpoken: "Checkmate, you win" as string | null, materialForYou: forYou(mine.materialAfter, you), finalFen: mine.fenAfter };
   }
   const a = await fx.analyze(mine.fenAfter);
   if (!a) {
-    return { engineLine: null, evalForYou: null, evalSpoken: null, materialForYou: forYou(mine.materialAfter, you), finalFen: mine.fenAfter, note: "No engine line available. Do not describe a continuation." };
+    return { line: [] as MoveFacts[], evalSpoken: null as string | null, materialForYou: forYou(mine.materialAfter, you), finalFen: mine.fenAfter, note: "No engine line available. Do not describe a continuation." };
   }
   let line = lineFacts(mine.fenAfter, a.pv.length > 0 ? a.pv : [a.bestUci], PLAYOUT_PLIES);
   if (hideBest) {
@@ -213,22 +251,63 @@ async function playOut(mine: MoveFacts, you: "White" | "Black", fx: CoachEffects
     if (cut >= 0) line = line.slice(0, cut);
   }
   if (line.length % 2 === 0) line = line.slice(0, -1); // keep the player to move at the end
-  if (line.length > 0) {
-    await fx.animateLine(mine.fenAfter, line.map((f) => f.uci), line.map((f) => (f.side === you ? BEST : REPLY)));
-  }
   const evalForYou = you === mine.side ? -a.scoreCp || 0 : a.scoreCp || 0; // scoreCp is from the side to move after `mine`
   const last = line[line.length - 1];
   return {
-    engineLine: line.map((f, i) => ({ ply: i + 1, side: f.side, spoken: f.spoken, captured: f.captured ?? null, check: f.check, fork: f.fork })),
-    evalForYou,
-    evalSpoken: describeEval(evalForYou),
+    line,
+    evalSpoken: describeEval(evalForYou) as string | null,
     materialForYou: forYou(last ? last.materialAfter : mine.materialAfter, you),
     finalFen: last ? last.fenAfter : mine.fenAfter,
   };
 }
 
+/** Facts about one ply of the pending line, safe for the LLM (no FEN, no UCI). */
+function plyOut(p: PendingLine, i: number) {
+  const f = p.plies[i];
+  return {
+    ply: i + 1,
+    total: p.plies.length,
+    side: f.side,
+    spoken: f.spoken,
+    captured: f.captured ?? null,
+    check: f.check,
+    fork: f.fork,
+    caption: plyCaption(f, p.you),
+    done: i === p.plies.length - 1,
+  };
+}
+
+/** Hold the line for next_move; returns the first ply (not yet shown) or null. */
+function holdLine(state: CoachState, base: string, mine: MoveFacts, play: Awaited<ReturnType<typeof playOut>>, you: Side, follow: boolean) {
+  state.pending = null;
+  if (play.line.length === 0) return null;
+  state.pending = {
+    base,
+    fens: [mine.fenAfter, ...play.line.slice(0, -1).map((f) => f.fenAfter)],
+    plies: play.line,
+    you,
+    next: 0,
+    evalSpoken: play.evalSpoken,
+    follow,
+  };
+  return plyOut(state.pending, 0);
+}
+
+const lineSummary = (play: Awaited<ReturnType<typeof playOut>>) => ({
+  lineLength: play.line.length,
+  evalSpoken: play.evalSpoken,
+  materialForYou: play.materialForYou,
+  ...("note" in play ? { note: play.note } : {}),
+});
+
 async function ensureReport(state: CoachState, fx: CoachEffects): Promise<Report | null> {
-  if (!state.report) state.report = await fx.fetchReport(state.levels);
+  if (!state.report) {
+    try {
+      state.report = await fx.fetchReport(state.levels);
+    } catch {
+      return null;
+    }
+  }
   return state.report;
 }
 
@@ -247,6 +326,8 @@ export async function handleFunctionCall(
     case "reset_position": return resetPosition(state, fx);
     case "set_levels": return setLevels(args, state, fx);
     case "step_line": return stepLine(args, state, fx);
+    case "next_move": return nextMove(state, fx);
+    case "get_profile": return getProfile(state, fx);
   }
 
   if (name !== "get_report" && name !== "show_mistake" && name !== "start_drill") {
@@ -292,6 +373,7 @@ export async function handleFunctionCall(
     const ex = pattern.examples[index];
     if (!Number.isInteger(index) || !ex) return { error: "index out of range", examples: pattern.examples.length };
     state.lastShown = ex;
+    state.pending = null;
     fx.showPosition(ex.fen, [arrow(ex.played, PLAYED), arrow(ex.best, BEST)]);
     return {
       moveNumber: moveNumber(ex.fen),
@@ -309,8 +391,13 @@ export async function handleFunctionCall(
   // start_drill
   if (pattern.examples.length === 0) return { error: `pattern "${tag}" has no examples` };
   const ex = pattern.examples.find((e) => !state.drilled.has(keyOf(e))) ?? pattern.examples[0];
+  return beginDrill(tag, ex, state, fx);
+}
+
+function beginDrill(tag: string, ex: Example, state: CoachState, fx: CoachEffects) {
   state.drilled.add(keyOf(ex));
   state.lastShown = ex;
+  state.pending = null;
   state.drill = { tag, example: ex, attempts: 0, hintsGiven: 0, solved: false, revealed: false, exploreFen: ex.fen };
   fx.showPosition(ex.fen);
   return {
@@ -323,6 +410,11 @@ export async function handleFunctionCall(
   };
 }
 
+/** UI helper (not an LLM function): open a specific analyzed position, e.g. a grid mark, as a drill. */
+export function openPosition(tag: string, ex: Example, state: CoachState, fx: CoachEffects) {
+  return beginDrill(tag, ex, state, fx);
+}
+
 async function playMove(args: Record<string, unknown>, state: CoachState, fx: CoachEffects) {
   const d = state.drill;
   if (!d) return NO_DRILL;
@@ -330,19 +422,27 @@ async function playMove(args: Record<string, unknown>, state: CoachState, fx: Co
   const j = judge(ex.fen, String(args.move ?? ""), ex.best, ex.played);
   if (j.verdict === "illegal") return { verdict: j.verdict, reason: j.reason };
   d.attempts += 1;
+  state.pending = null;
   await fx.flashMove(ex.fen, j.uci!);
   const mine = describeMove(ex.fen, j.uci!);
   const facts = factsOut(mine);
   const spoken = mine?.spoken ?? j.uci!;
-  const { finalFen, ...play } = mine ? await playOut(mine, sideToMove(ex.fen), fx, isOpen(d) && j.verdict !== "best" ? ex.best : null) : { finalFen: ex.fen, engineLine: null, evalForYou: null, evalSpoken: null, materialForYou: 0 };
-  d.awaitingReply = sideToMove(finalFen) !== sideToMove(ex.fen);
-  if (j.verdict === "best") {
+  const you = sideToMove(ex.fen);
+  const solved = j.verdict === "best";
+  if (!mine) {
+    d.exploreFen = ex.fen;
+    return { verdict: j.verdict, spoken, attempts: d.attempts, facts, lineLength: 0, evalSpoken: null, materialForYou: 0, next: null };
+  }
+  const play = await playOut(mine, you, fx, isOpen(d) && !solved ? ex.best : null);
+  const next = holdLine(state, ex.fen, mine, play, you, solved);
+  d.awaitingReply = sideToMove(play.finalFen) !== you;
+  if (solved) {
     d.solved = true;
-    d.exploreFen = finalFen;
-    return { verdict: "best", spoken, attempts: d.attempts, facts, ...play };
+    d.exploreFen = mine.fenAfter; // follows the plies as next_move shows them
+    return { verdict: "best", spoken, attempts: d.attempts, facts, ...lineSummary(play), next };
   }
   d.exploreFen = ex.fen; // attempts are always judged from the drill start
-  return { verdict: j.verdict, spoken, attempts: d.attempts, hintsGiven: d.hintsGiven, hintsRemaining: 3 - d.hintsGiven, facts, ...play };
+  return { verdict: j.verdict, spoken, attempts: d.attempts, hintsGiven: d.hintsGiven, hintsRemaining: 3 - d.hintsGiven, facts, ...lineSummary(play), next };
 }
 
 function getHint(state: CoachState, fx: CoachEffects) {
@@ -353,6 +453,7 @@ function getHint(state: CoachState, fx: CoachEffects) {
   d.hintsGiven += 1;
   if (d.hintsGiven === 3) {
     d.exploreFen = d.example.fen;
+    state.pending = null;
     fx.showPosition(d.example.fen, [arrow(d.example.best, BEST)]);
   }
   return { hint, level: d.hintsGiven, hintsRemaining: 3 - d.hintsGiven };
@@ -364,6 +465,7 @@ function revealAnswer(state: CoachState, fx: CoachEffects) {
   const ex = d.example;
   d.revealed = true;
   d.exploreFen = ex.fen;
+  state.pending = null;
   fx.showPosition(ex.fen, [arrow(ex.best, BEST), arrow(ex.played, PLAYED)]);
   return {
     bestSpoken: spokenMove(ex.fen, ex.best),
@@ -405,19 +507,63 @@ async function tryMove(args: Record<string, unknown>, state: CoachState, fx: Coa
   if (!d) return NO_DRILL;
   const input = String(args.move ?? "");
   const you = sideToMove(d.example.fen);
-  if (isGameOver(d.exploreFen)) return { error: "The game is over in this position. Say reset to go back to the drill." };
-  if (sideToMove(d.exploreFen) !== you) {
+  // A new move interrupts the line being shown: it is played from where that line began.
+  const from = state.pending ? state.pending.base : d.exploreFen;
+  if (isGameOver(from)) return { error: "The game is over in this position. Say reset to go back to the drill." };
+  if (!state.pending && sideToMove(from) !== you) {
     if (d.awaitingReply) return { error: "No engine reply is available here. Say reset to go back to the drill." };
     return { error: "It's the opponent's move in this position. Step forward, or reset to the drill." };
   }
-  const parsed = parseMove(d.exploreFen, input);
-  const mine = parsed ? describeMove(d.exploreFen, uciOf(parsed)) : null;
+  const parsed = parseMove(from, input);
+  const mine = parsed ? describeMove(from, uciOf(parsed)) : null;
   if (!parsed || !mine) return { verdict: "illegal", reason: `No single legal move matches "${input}"` };
-  await fx.flashMove(d.exploreFen, mine.uci);
-  const { finalFen, ...play } = await playOut(mine, you, fx, isOpen(d) ? d.example.best : null);
-  d.exploreFen = finalFen;
-  d.awaitingReply = sideToMove(finalFen) !== you;
-  return { yourMove: mine.spoken, ...play };
+  state.pending = null;
+  await fx.flashMove(from, mine.uci);
+  const play = await playOut(mine, you, fx, isOpen(d) ? d.example.best : null);
+  const next = holdLine(state, from, mine, play, you, true);
+  d.exploreFen = mine.fenAfter; // follows the plies as next_move shows them
+  d.awaitingReply = sideToMove(play.finalFen) !== you;
+  return { yourMove: mine.spoken, facts: factsOut(mine), ...lineSummary(play), next };
+}
+
+async function nextMove(state: CoachState, fx: CoachEffects) {
+  const p = state.pending;
+  if (!p) return { error: "There is no line to continue. Say so, or ask the player for a move." };
+  const i = p.next;
+  const f = p.plies[i];
+  await fx.animateLine(p.fens[i], [f.uci], CURRENT);
+  const out = plyOut(p, i);
+  // A move, reset or drill during the animation replaced the line: leave the new state alone.
+  if (state.pending === p) {
+    p.next += 1;
+    if (p.follow && state.drill) state.drill.exploreFen = f.fenAfter;
+    if (out.done) state.pending = null;
+  }
+  return { ...out, ...(out.done && p.evalSpoken ? { evalSpoken: p.evalSpoken } : {}) };
+}
+
+async function getProfile(state: CoachState, fx: CoachEffects) {
+  if (!state.profile) {
+    try {
+      state.profile = await fx.fetchProfile();
+    } catch {
+      return { error: "could not load the profile" };
+    }
+  }
+  const profile = state.profile;
+  if (!profile) return { error: "no profile yet" };
+  const { strengths, leaks } = profileInsights(profile);
+  const top = [...profile.patterns]
+    .filter((p) => p.tag !== "time_trouble" && p.tag !== "other")
+    .sort((a, b) => b.count - a.count)[0];
+  return {
+    summary: profileSummary(profile),
+    gamesAnalyzed: profile.analyzed.games,
+    ratings: profile.ratings ? Object.fromEntries(Object.entries(profile.ratings).map(([k, v]) => [k, v.rating])) : null,
+    strengths: strengths.map((x) => x.text),
+    leaks: leaks.map((x) => x.text),
+    topPattern: top && top.count > 0 ? { tag: top.tag, name: patternLabel(top.tag).name, description: patternLabel(top.tag).description, count: top.count } : null,
+  };
 }
 
 function resetPosition(state: CoachState, fx: CoachEffects) {
@@ -425,6 +571,7 @@ function resetPosition(state: CoachState, fx: CoachEffects) {
   if (!d) return NO_DRILL;
   d.exploreFen = d.example.fen;
   d.awaitingReply = false;
+  state.pending = null;
   fx.showPosition(d.example.fen);
   return { status: "Back to the drill position" };
 }
@@ -438,6 +585,7 @@ async function setLevels(args: Record<string, unknown>, state: CoachState, fx: C
   state.levels = levels;
   state.report = null;
   state.drill = null;
+  state.pending = null;
   fx.setLevels(levels);
   const report = await ensureReport(state, fx);
   if (!report) return { error: "no report yet" };
@@ -449,6 +597,7 @@ function stepLine(args: Record<string, unknown>, state: CoachState, fx: CoachEff
   if (!["back", "forward", "start", "end"].includes(dir)) return { error: "direction must be back, forward, start or end" };
   const r = fx.step(dir as StepDirection);
   if (!r) return { error: "Nothing to step to. Say so." };
+  state.pending = null; // stepping is manual navigation; the coach-paced line is dropped
   if (state.drill) {
     state.drill.exploreFen = r.fen; // try_move refuses when the opponent is to move there
     state.drill.awaitingReply = false;

@@ -46,25 +46,46 @@ public class ReportService {
         return winDrop >= BLUNDER ? "blunder" : winDrop >= MISTAKE ? "mistake" : "inaccuracy";
     }
 
-    private static String kind(Boolean bestQuiet) {
+    static String kind(Boolean bestQuiet) {
         return Boolean.TRUE.equals(bestQuiet) ? "positional" : "tactical";
     }
 
-    private Optional<UUID> latestDoneRun(String username) {
+    Optional<UUID> latestDoneRun(String username) {
         List<UUID> ids = jdbc.queryForList("""
             select id from analysis_run where lower(username) = lower(?) and status = 'DONE'
             order by created_at desc limit 1""", UUID.class, username);
         return ids.stream().findFirst();
     }
 
-    private static List<String> splitPv(String pv) {
+    static List<String> splitPv(String pv) {
         if (pv == null || pv.isBlank()) return List.of();
         return List.of(pv.trim().split("\\s+"));
     }
 
-    private static List<String> tagsOf(java.sql.ResultSet rs) throws java.sql.SQLException {
+    static List<String> tagsOf(java.sql.ResultSet rs) throws java.sql.SQLException {
         Array arr = rs.getArray("tags");
         return arr == null ? List.of() : Arrays.asList((String[]) arr.getArray());
+    }
+
+    /**
+     * Maps a row selecting m.game_id, m.ply, m.before_fen, m.played_uci, a.best_uci, a.cpl, a.p_played, a.win_drop,
+     * a.best_quiet, a.difficulty_elo, c.pv and a "level" column to an Example.
+     */
+    static Example exampleOf(java.sql.ResultSet rs) throws java.sql.SQLException {
+        double wd = rs.getDouble("win_drop");
+        return new Example(rs.getString("game_id"), rs.getInt("ply"), rs.getString("before_fen"),
+            rs.getString("played_uci"), rs.getString("best_uci"), rs.getInt("cpl"), rs.getDouble("p_played"),
+            splitPv(rs.getString("pv")), rs.getString("level"), kind((Boolean) rs.getObject("best_quiet")),
+            severity(wd), (Integer) rs.getObject("difficulty_elo"));
+    }
+
+    double minP() {
+        return minP;
+    }
+
+    /** SQL expression for the difficulty level column (aliases a = move_analysis, m = move). */
+    String levelSql() {
+        return difficulty.sqlLevel("a.difficulty_elo", "m.rating");
     }
 
     /** One candidate move with its primary pattern, ready for filtering. */
@@ -96,13 +117,8 @@ public class ReportService {
             where m.run_id = ? and %s
             order by a.win_drop desc, m.game_id, m.ply
             """.formatted(lvl, Severity.CANDIDATE_SQL), (rs, i) -> {
-                double wd = rs.getDouble("win_drop");
-                String level = rs.getString("level");
-                Integer elo = (Integer) rs.getObject("difficulty_elo");
-                Example ex = new Example(rs.getString("game_id"), rs.getInt("ply"), rs.getString("before_fen"),
-                    rs.getString("played_uci"), rs.getString("best_uci"), rs.getInt("cpl"), rs.getDouble("p_played"),
-                    splitPv(rs.getString("pv")), level, kind((Boolean) rs.getObject("best_quiet")), severity(wd), elo);
-                return new Cand(primaryPattern(tagsOf(rs)), level, ex);
+                Example ex = exampleOf(rs);
+                return new Cand(primaryPattern(tagsOf(rs)), ex.level(), ex);
             }, run, minP);
 
         // When no candidate in the run has an estimate yet, show unrated ones rather than nothing.

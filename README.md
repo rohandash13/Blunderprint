@@ -9,6 +9,15 @@ mistake with a neural network trained on how players at that rating actually mov
 patterns (hanging pieces, missed tactics, endgame technique, ...), and opens a voice coach that drills the player
 on their own positions.
 
+The coach opens with **Profile → Choose focus → Drill**. The Club Wallchart shows patterns across recent games;
+click a mark to replay that position, or choose a pattern to practice. Engine lines advance one move at a time,
+with a caption for each move. New usernames can be analyzed on the public demo within its queue and daily limits.
+
+![Blunderprint player profile and wallchart](docs/design/reviews/coach-ui-v3/desktop.png)
+
+The visual system and responsive behavior are documented in [DESIGN.md](DESIGN.md), with
+[desktop and phone review captures](docs/design/reviews/2026-11-13-coach-ui-v3.md).
+
 ## Architecture
 
 ```

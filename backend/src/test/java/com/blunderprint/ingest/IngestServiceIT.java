@@ -22,6 +22,20 @@ class IngestServiceIT extends PostgresIT {
     }
 
     @Test
+    void noGamesThrowsAndLeavesNoRun() {
+        when(lichess.fetchGames("ghost", 10)).thenReturn(List.of());
+        assertThrows(NoRatedGamesException.class, () -> ingest.ingest("ghost", 10, 10));
+        assertEquals(0, jdbc.queryForObject("select count(*) from analysis_run", Integer.class));
+    }
+
+    @Test
+    void unknownLichessUserThrowsNoRatedGames() {
+        when(lichess.fetchGames("nobody", 10))
+            .thenThrow(new com.blunderprint.lichess.LichessUserNotFoundException("nobody"));
+        assertThrows(NoRatedGamesException.class, () -> ingest.ingest("nobody", 10, 10));
+    }
+
+    @Test
     void storesOnlyTheUsersMovesAndEnqueuesJobs() {
         when(lichess.fetchGames("alice", 10)).thenReturn(List.of(game()));
         var res = ingest.ingest("alice", 10, 10);

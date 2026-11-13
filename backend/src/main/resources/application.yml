@@ -40,3 +40,9 @@ voice:
   rate:
     per-ip-per-hour: 20
     per-day: 300
+analysis:
+  max-runs-per-day: 40
+  max-runs-per-ip-per-day: 3
+  max-games: 40
+  reuse-days: 7
+  max-attempts-per-ip-per-hour: 20

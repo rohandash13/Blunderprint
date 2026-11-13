@@ -19,6 +19,7 @@ public abstract class PostgresIT {
         r.add("spring.datasource.username", PG::getUsername);
         r.add("spring.datasource.password", PG::getPassword);
         r.add("workers.autostart", () -> "false");
+        r.add("scheduling.enabled", () -> "false");   // tests call tick() themselves
     }
 
     @Autowired protected JdbcTemplate jdbc;
