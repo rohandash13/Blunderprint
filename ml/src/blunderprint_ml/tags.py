@@ -34,19 +34,19 @@ def is_quiet(board: chess.Board, move: chess.Move) -> bool:
 
 def wins_free_material(board: chess.Board, move: chess.Move) -> bool:
     """Mate in one, or a capture of an undefended piece / a clearly favourable trade (gain >= 2)."""
+    capturing = board.piece_type_at(move.from_square)
+    is_capture = board.is_capture(move)
+    captured = None
+    if is_capture:
+        captured = chess.PAWN if board.is_en_passant(move) else board.piece_type_at(move.to_square)
     b = board.copy()
-    capturing = b.piece_type_at(move.from_square)
-    if board.is_en_passant(move):
-        captured = chess.PAWN
-    else:
-        captured = b.piece_type_at(move.to_square)
-    mover = b.turn
     b.push(move)
     if b.is_checkmate():
         return True
-    if captured is None:
+    if not is_capture:
         return False
-    if not b.attackers(not mover, move.to_square):
+    # Defended means a legal recapture exists (pins and king-adjacent protection are respected).
+    if not any(m.to_square == move.to_square for m in b.legal_moves):
         return True
     return _VALUE.get(captured, 0) - _VALUE.get(capturing, 0) >= 2
 

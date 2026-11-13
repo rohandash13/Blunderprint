@@ -121,3 +121,27 @@ def test_no_positional_when_hanging_piece_tagged():
 
 def test_no_tags_for_cpl_20_even_with_quiet_best():
     assert tag_move(chess.Board(_MIDDLE), mv("a2a3"), mv("f1b5"), 20, None) == []
+
+
+def test_king_protected_by_pawn_cannot_recapture():
+    b = chess.Board("8/8/4k3/3n4/4P3/8/8/3RK3 w - - 0 1")
+    assert b.is_capture(mv("d1d5"))
+    assert wins_free_material(b, mv("d1d5"))          # Kxd5 is illegal: e4 guards d5
+
+
+def test_pinned_defender_cannot_recapture():
+    b = chess.Board("2k5/8/2b5/3n4/8/8/8/2RQK3 w - - 0 1")
+    assert b.is_capture(mv("d1d5"))
+    assert wins_free_material(b, mv("d1d5"))          # Bc6 is pinned to Kc8 by Rc1, so Bxd5 is illegal
+
+
+def test_king_takes_undefended_piece():
+    b = chess.Board("8/8/8/3n4/3K4/8/8/7k w - - 0 1")
+    assert b.is_capture(mv("d4d5"))
+    assert wins_free_material(b, mv("d4d5"))
+
+
+def test_promotion_capture_of_defended_rook():
+    b = chess.Board("1rk5/P7/8/8/8/8/8/4K3 w - - 0 1")
+    assert mv("a7b8q") in b.legal_moves and b.is_capture(mv("a7b8q"))
+    assert wins_free_material(b, mv("a7b8q"))         # 5 - 1 >= 2
