@@ -2,10 +2,17 @@ package com.blunderprint.analysis;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.blunderprint.PostgresIT;
+import com.blunderprint.engine.EngineTracer;
+import com.blunderprint.engine.Trace;
 import com.blunderprint.model.ModelClient;
+import java.util.Optional;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -18,6 +25,7 @@ import org.springframework.web.client.HttpServerErrorException;
 class AnalysisServiceIT extends PostgresIT {
     @Autowired AnalysisService analysis;
     @MockBean ModelClient model;
+    @MockBean EngineTracer tracer;
 
     private UUID seed() {
         UUID run = UUID.randomUUID();
@@ -153,5 +161,74 @@ class AnalysisServiceIT extends PostgresIT {
         assertEquals("SCORING", analysis.progress(run).status());
         analysis.tick();
         assertEquals("FAILED", analysis.progress(run).status());
+    }
+
+    private void stubModel(double pPlayed, boolean quiet, boolean free) {
+        org.mockito.Mockito.doAnswer(inv -> {
+            List<ModelClient.MoveIn> in = inv.getArgument(0);
+            return List.of(new ModelClient.MoveOut(in.get(0).id(), pPlayed, List.of(), 0.1, quiet, free));
+        }).when(model).analyze(anyList());
+    }
+
+    @Test
+    void storesWinDropAndFlagsAndTracesCandidate() {
+        seed();
+        seedEvals();
+        stubModel(0.4, true, false);
+        when(tracer.trace("A")).thenReturn(Optional.of(new Trace("d2d4", 100, -100, 6)));
+        analysis.tick();
+        var row = jdbc.queryForMap("select win_drop, best_quiet, best_free_material, find_depth, only_move, difficulty_elo from move_analysis");
+        assertEquals(WinChance.drop(30, -200), (Double) row.get("win_drop"), 1e-9);
+        assertEquals(true, row.get("best_quiet"));
+        assertEquals(false, row.get("best_free_material"));
+        assertEquals(6, row.get("find_depth"));
+        assertEquals(true, row.get("only_move"));
+        assertEquals(DifficultyEstimator.estimate(6, false, true, true), row.get("difficulty_elo"));
+        verify(tracer, times(1)).trace(anyString());
+    }
+
+    @Test
+    void emptyTraceLeavesNullsAndRunStillDone() {
+        UUID run = seed();
+        seedEvals();
+        stubModel(0.4, false, false);
+        when(tracer.trace("A")).thenReturn(Optional.empty());
+        analysis.tick();
+        var row = jdbc.queryForMap("select find_depth, only_move, difficulty_elo from move_analysis");
+        assertNull(row.get("find_depth"));
+        assertNull(row.get("only_move"));
+        assertNull(row.get("difficulty_elo"));
+        assertEquals("DONE", analysis.progress(run).status());
+    }
+
+    @Test
+    void nonCandidatesAreNotTraced() {
+        seed();
+        seedEvals();
+        // low p_played: habit filter excludes it
+        stubModel(0.05, false, false);
+        analysis.tick();
+        verify(tracer, never()).trace(anyString());
+        assertNull(jdbc.queryForObject("select find_depth from move_analysis", Integer.class));
+    }
+
+    @Test
+    void smallDropNeedsQuietBestMove() {
+        UUID run = seed();
+        // best +30, after (opponent view) -10 => played +10... use after = -40 => played 40 => small drop (~0.0)
+        jdbc.update("insert into eval_cache(fen_key, engine, depth, best_uci, score_cp) values ('A','sf',10,'d2d4',150)");
+        jdbc.update("insert into eval_cache(fen_key, engine, depth, best_uci, score_cp) values ('B','sf',10,'e7e5',-40)");
+        // win_drop = wc(150) - wc(40) ~ 0.066 : inaccuracy range
+        stubModel(0.4, false, false);
+        analysis.tick();
+        verify(tracer, never()).trace(anyString());
+        analysis.rescoreLatest("u");
+        verify(tracer, never()).trace(anyString());
+        stubModel(0.4, true, false);
+        when(tracer.trace("A")).thenReturn(Optional.of(new Trace("d2d4", 150, 100, 3)));
+        analysis.rescoreLatest("u");
+        verify(tracer, times(1)).trace("A");
+        assertEquals(false, jdbc.queryForObject("select only_move from move_analysis", Boolean.class));
+        assertEquals("DONE", analysis.progress(run).status());
     }
 }

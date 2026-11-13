@@ -20,9 +20,15 @@ public class ModelClient {
                          @JsonProperty("clock_cs") Integer clockCs) {}
 
     public record MoveOut(long id, @JsonProperty("p_played") double pPlayed, List<String> tags,
-                          @JsonProperty("p_best") Double pBest) {
+                          @JsonProperty("p_best") Double pBest,
+                          @JsonProperty("best_quiet") Boolean bestQuiet,
+                          @JsonProperty("best_free_material") Boolean bestFreeMaterial) {
+        public MoveOut(long id, double pPlayed, List<String> tags, Double pBest) {
+            this(id, pPlayed, tags, pBest, null, null);
+        }
+
         public MoveOut(long id, double pPlayed, List<String> tags) {
-            this(id, pPlayed, tags, null);
+            this(id, pPlayed, tags, null, null, null);
         }
     }
 

@@ -41,4 +41,20 @@ class ModelClientTest {
         assertEquals(0.6, out.get(0).pBest(), 1e-9);
         assertNull(out.get(1).pBest());
     }
+
+    @Test
+    void parsesBestFlags() {
+        RestClient.Builder b = RestClient.builder().baseUrl("http://model");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(b).build();
+        server.expect(requestTo("http://model/analyze"))
+            .andRespond(withSuccess("[{\"id\":1,\"p_played\":0.2,\"tags\":[],\"best_quiet\":true,\"best_free_material\":false},{\"id\":2,\"p_played\":0.1,\"tags\":[],\"best_quiet\":null,\"best_free_material\":null}]",
+                MediaType.APPLICATION_JSON));
+        var out = new ModelClient(b.build()).analyze(List.of(
+            new ModelClient.MoveIn(1, "fen", 1500, "e2e4", "d2d4", 0, null),
+            new ModelClient.MoveIn(2, "fen", 1500, "e2e4", null, 0, null)));
+        assertEquals(Boolean.TRUE, out.get(0).bestQuiet());
+        assertEquals(Boolean.FALSE, out.get(0).bestFreeMaterial());
+        assertNull(out.get(1).bestQuiet());
+        assertNull(out.get(1).bestFreeMaterial());
+    }
 }
