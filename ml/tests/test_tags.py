@@ -1,6 +1,7 @@
 import chess
 
-from blunderprint_ml.tags import TAG_MIN_CPL, is_quiet, tag_move, wins_free_material
+from blunderprint_ml.tags import (TAG_MIN_CPL, best_is_quiet, best_line_is_tactical, is_quiet, tag_move,
+                                  wins_free_material)
 
 
 def mv(u):
@@ -145,3 +146,51 @@ def test_promotion_capture_of_defended_rook():
     b = chess.Board("1rk5/P7/8/8/8/8/8/4K3 w - - 0 1")
     assert mv("a7b8q") in b.legal_moves and b.is_capture(mv("a7b8q"))
     assert wins_free_material(b, mv("a7b8q"))         # 5 - 1 >= 2
+
+
+# --- best_line_is_tactical: a quiet-looking best move can still be a tactic ---
+_IN_CHECK = "4r1k1/8/8/8/8/8/5PPP/4K3 w - - 0 1"          # Re8 checks Ke1; Kd1 is a quiet evasion
+_WINS_QUEEN = "4k3/8/8/2q5/8/8/1P6/4K3 w - - 0 1"          # b4 hits the queen
+_MATE_IN_2 = "6k1/p4ppp/8/8/8/8/5PPP/R5K1 w - - 0 1"       # Rb1 a6 Rb8#
+
+
+def test_in_check_is_tactical_and_not_positional():
+    b = chess.Board(_IN_CHECK)
+    assert is_quiet(b, mv("e1d1"))
+    assert best_line_is_tactical(b, None)
+    assert not best_is_quiet(b, mv("e1d1"), None)
+    assert "positional" not in tag_move(b, mv("e1f1"), mv("e1d1"), 80, None)
+
+
+def test_quiet_move_winning_a_queen_by_ply_4_is_tactical():
+    b = chess.Board(_WINS_QUEEN)
+    assert is_quiet(b, mv("b2b4"))
+    assert best_line_is_tactical(b, "b2b4 e8e7 b4c5 e7e6")
+    assert not best_is_quiet(b, mv("b2b4"), "b2b4 e8e7 b4c5 e7e6")
+
+
+def test_quiet_move_mating_in_two_is_tactical():
+    b = chess.Board(_MATE_IN_2)
+    assert best_line_is_tactical(b, "a1b1 a7a6 b1b8")
+    assert not best_is_quiet(b, mv("a1b1"), "a1b1 a7a6 b1b8")
+
+
+def test_genuine_quiet_improving_move_stays_quiet_and_positional():
+    b = chess.Board(_MIDDLE)
+    pv = "f1b5 g8f6 e1g1 f8e7"
+    assert not best_line_is_tactical(b, pv)
+    assert best_is_quiet(b, mv("f1b5"), pv)
+    assert tag_move(b, mv("a2a3"), mv("f1b5"), 60, None, pv) == ["positional"]
+
+
+def test_sacrifice_then_recapture_is_not_counted_as_a_gain():
+    b = chess.Board(_MIDDLE)
+    assert not best_line_is_tactical(b, "f1b5 g8f6 b5c6 d7c6")
+
+
+def test_pv_is_cut_at_the_first_illegal_move_and_after_four_plies():
+    b = chess.Board(_WINS_QUEEN)
+    assert not best_line_is_tactical(b, "b2b4 e8e7 b4b5 e7e6 b5c6")     # ply 3 illegal-free but no gain
+    assert not best_line_is_tactical(b, "b2b4 e8e7 zzzz b4c5")          # garbage stops the walk
+    assert not best_line_is_tactical(b, "b2b4 e8e7 e1e8 b4c5")          # illegal ply 3 stops the walk
+    assert not best_line_is_tactical(b, "b2b4 e8e7 b4b5 e7e6 b5c6 e6e5 c6c7")  # only 4 plies are read

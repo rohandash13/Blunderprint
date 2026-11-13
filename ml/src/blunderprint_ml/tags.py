@@ -32,6 +32,46 @@ def is_quiet(board: chess.Board, move: chess.Move) -> bool:
     return not (board.is_capture(move) or board.gives_check(move) or move.promotion)
 
 
+def _balance(board: chess.Board, color: bool) -> int:
+    total = 0
+    for piece in board.piece_map().values():
+        v = _VALUE.get(piece.piece_type, 0)
+        total += v if piece.color == color else -v
+    return total
+
+
+def best_line_is_tactical(board: chess.Board, best_pv: str | None) -> bool:
+    """The best move is a check evasion, or its line (<= 4 plies) mates or wins >= 2 material.
+
+    Material is only compared after an opponent reply, so a sacrifice that is recaptured is not a gain.
+    """
+    if board.is_check():
+        return True
+    if not best_pv:
+        return False
+    mover = board.turn
+    start = _balance(board, mover)
+    b = board.copy()
+    for ply, uci in enumerate(best_pv.split()[:4], 1):
+        try:
+            move = chess.Move.from_uci(uci)
+        except ValueError:
+            break
+        if move not in b.legal_moves:
+            break
+        b.push(move)
+        if ply % 2 == 1 and b.is_checkmate():
+            return True
+        if ply % 2 == 0 and _balance(b, mover) - start >= 2:
+            return True
+    return False
+
+
+def best_is_quiet(board: chess.Board, best: chess.Move, best_pv: str | None = None) -> bool:
+    """Quiet by move type and not part of a tactic (check evasion, forced mate, material win)."""
+    return is_quiet(board, best) and not best_line_is_tactical(board, best_pv)
+
+
 def wins_free_material(board: chess.Board, move: chess.Move) -> bool:
     """Mate in one, or a capture of an undefended piece / a clearly favourable trade (gain >= 2)."""
     capturing = board.piece_type_at(move.from_square)
@@ -56,7 +96,7 @@ def _non_pawn_pieces(board: chess.Board) -> int:
 
 
 def tag_move(board_before: chess.Board, played: chess.Move, best: chess.Move | None,
-             cpl: int, clock_cs: int | None) -> list[str]:
+             cpl: int, clock_cs: int | None, best_pv: str | None = None) -> list[str]:
     if cpl < TAG_MIN_CPL:
         return []
     tags = []
@@ -70,6 +110,6 @@ def tag_move(board_before: chess.Board, played: chess.Move, best: chess.Move | N
         tags.append("endgame_technique")
     if clock_cs is not None and clock_cs < 3000:
         tags.append("time_trouble")
-    if best is not None and is_quiet(board_before, best) and not {"hanging_piece", "missed_tactic"} & set(tags):
+    if best is not None and best_is_quiet(board_before, best, best_pv) and not {"hanging_piece", "missed_tactic"} & set(tags):
         tags.append("positional")
     return tags or ["other"]

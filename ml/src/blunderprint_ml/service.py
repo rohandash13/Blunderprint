@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from .inference import p_played_and_best_batch
 from .models import load_checkpoint
-from .tags import is_quiet, tag_move, wins_free_material
+from .tags import best_is_quiet, tag_move, wins_free_material
 
 
 class MoveIn(BaseModel):
@@ -16,6 +16,7 @@ class MoveIn(BaseModel):
     rating: int | None = None
     played_uci: str
     best_uci: str | None = None
+    best_pv: str | None = None
     cpl: int | None = None
     clock_cs: int | None = None
 
@@ -81,10 +82,10 @@ def create_app() -> FastAPI:
         out = []
         for m, board, played, best, (p, pb) in zip(req.moves, boards, playeds, bests, scored):
             # Without a centipawn loss there is nothing to tag against, so no tags.
-            tags = [] if m.cpl is None else tag_move(board, played, best, m.cpl, m.clock_cs)
+            tags = [] if m.cpl is None else tag_move(board, played, best, m.cpl, m.clock_cs, m.best_pv)
             out.append(MoveOut(
                 id=m.id, p_played=p, p_best=pb, tags=tags,
-                best_quiet=None if best is None else is_quiet(board, best),
+                best_quiet=None if best is None else best_is_quiet(board, best, m.best_pv),
                 best_free_material=None if best is None else wins_free_material(board, best)))
         return out
 

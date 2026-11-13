@@ -185,3 +185,14 @@ def test_service_returns_best_flags(client):
     assert out[1]["best_quiet"] is True and out[1]["best_free_material"] is False
     assert "positional" in out[1]["tags"]
     assert out[2]["best_quiet"] is None and out[2]["best_free_material"] is None
+
+
+def test_service_best_pv_makes_a_tactical_quiet_move_not_quiet(client):
+    body = {"moves": [
+        {"id": 1, "fen": "4k3/8/8/2q5/8/8/1P6/4K3 w - - 0 1", "rating": 1500, "played_uci": "e1d1",
+         "best_uci": "b2b4", "best_pv": "b2b4 e8e7 b4c5 e7e6", "cpl": 600, "clock_cs": None},
+        {"id": 2, "fen": "4r1k1/8/8/8/8/8/5PPP/4K3 w - - 0 1", "rating": 1500, "played_uci": "e1f1",
+         "best_uci": "e1d1", "cpl": 80, "clock_cs": None}]}
+    out = client.post("/analyze", json=body).json()
+    assert out[0]["best_quiet"] is False and "positional" not in out[0]["tags"]
+    assert out[1]["best_quiet"] is False and "positional" not in out[1]["tags"]
