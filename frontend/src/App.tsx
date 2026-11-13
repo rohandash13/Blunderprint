@@ -1,3 +1,4 @@
+import { fetchProfile } from "./api";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Chessboard } from "react-chessboard";
 import type { Arrow as CbArrow } from "react-chessboard/dist/chessboard/types";
@@ -81,6 +82,7 @@ export default function App() {
   const syncLinePos = () => setLinePos(history.current.position.total > 0 ? history.current.position : null);
 
   const effects: CoachEffects = {
+    fetchProfile: () => fetchProfile(username),
     fetchReport: async (lv) => {
       const req = ++reportReq.current;
       const r = await fetchReport(username, lv);
