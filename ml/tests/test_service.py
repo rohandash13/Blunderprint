@@ -169,3 +169,19 @@ def test_service_returns_p_best(client):
     out = client.post("/analyze", json=body).json()
     assert out[0]["p_best"] == pytest.approx(out[0]["p_played"])
     assert out[1]["p_best"] is None
+
+
+def test_service_returns_best_flags(client):
+    # Qxd5 wins an undefended knight (not quiet, free material); Bb5 is quiet and wins nothing.
+    body = {"moves": [
+        {"id": 1, "fen": "4k3/8/8/3n4/8/8/8/3QK3 w - - 0 1", "rating": 1500, "played_uci": "e1e2",
+         "best_uci": "d1d5", "cpl": 300, "clock_cs": None},
+        {"id": 2, "fen": "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 13", "rating": 1500,
+         "played_uci": "a2a3", "best_uci": "f1b5", "cpl": 60, "clock_cs": None},
+        {"id": 3, "fen": chess.STARTING_FEN, "rating": 1500, "played_uci": "e2e4",
+         "best_uci": None, "cpl": None, "clock_cs": None}]}
+    out = client.post("/analyze", json=body).json()
+    assert out[0]["best_quiet"] is False and out[0]["best_free_material"] is True
+    assert out[1]["best_quiet"] is True and out[1]["best_free_material"] is False
+    assert "positional" in out[1]["tags"]
+    assert out[2]["best_quiet"] is None and out[2]["best_free_material"] is None

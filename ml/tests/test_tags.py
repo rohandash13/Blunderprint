@@ -1,6 +1,6 @@
 import chess
 
-from blunderprint_ml.tags import tag_move
+from blunderprint_ml.tags import TAG_MIN_CPL, is_quiet, tag_move, wins_free_material
 
 
 def mv(u):
@@ -8,7 +8,9 @@ def mv(u):
 
 
 def test_not_a_mistake_has_no_tags():
-    assert tag_move(chess.Board(), mv("e2e4"), mv("d2d4"), 50, None) == []
+    assert TAG_MIN_CPL == 30
+    assert tag_move(chess.Board(), mv("e2e4"), mv("d2d4"), 20, None) == []
+    assert tag_move(chess.Board(), mv("e2e4"), mv("d2d4"), 29, None) == []
 
 
 def test_hanging_piece():
@@ -43,5 +45,79 @@ def test_time_trouble():
 
 
 def test_falls_back_to_other():
-    b = chess.Board("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 13")
-    assert tag_move(b, mv("a2a3"), mv("f1b5"), 120, None) == ["other"]
+    b = chess.Board("r1bqkbnr/ppp2ppp/2n5/3pp3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 13")
+    assert b.is_capture(mv("e4d5"))
+    assert tag_move(b, mv("a2a3"), mv("e4d5"), 120, None) == ["other"]
+
+
+_MIDDLE = "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 13"
+
+
+def test_is_quiet():
+    assert is_quiet(chess.Board(), mv("e2e4"))
+    cap = chess.Board("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2")
+    assert cap.is_capture(mv("e4d5")) and not is_quiet(cap, mv("e4d5"))
+    chk = chess.Board("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 30")
+    assert chk.gives_check(mv("a1a8")) and not is_quiet(chk, mv("a1a8"))
+    promo = chess.Board("8/P6k/8/8/8/8/8/K7 w - - 0 1")
+    assert mv("a7a8q") in promo.legal_moves and not is_quiet(promo, mv("a7a8q"))
+
+
+def test_wins_free_material_undefended_knight():
+    b = chess.Board("4k3/8/8/3n4/8/8/8/3QK3 w - - 0 1")
+    assert mv("d1d5") in b.legal_moves
+    assert wins_free_material(b, mv("d1d5"))
+
+
+def test_equal_defended_trade_is_not_free():
+    b = chess.Board("3qk3/8/8/8/8/8/8/3QK3 w - - 0 1")
+    assert b.is_capture(mv("d1d8"))
+    assert not wins_free_material(b, mv("d1d8"))
+
+
+def test_knight_takes_defended_pawn_is_not_free():
+    b = chess.Board("4k3/8/2p5/3p4/8/2N5/8/4K3 w - - 0 1")
+    assert b.is_capture(mv("c3d5"))
+    assert not wins_free_material(b, mv("c3d5"))      # d5 is guarded by the c6 pawn
+
+
+def test_pawn_takes_defended_rook_is_free():
+    b = chess.Board("4k3/8/2p5/3r4/4P3/8/8/4K3 w - - 0 1")
+    assert b.is_capture(mv("e4d5"))
+    assert wins_free_material(b, mv("e4d5"))          # 5 - 1 >= 2 even though c6 recaptures
+
+
+def test_en_passant_counts_as_pawn_capture():
+    b = chess.Board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1")
+    assert b.is_en_passant(mv("e5d6"))
+    assert wins_free_material(b, mv("e5d6"))          # d6 undefended after the capture
+
+
+def test_mate_in_one_is_free_material():
+    b = chess.Board("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 30")
+    assert wins_free_material(b, mv("a1a8"))
+
+
+def test_quiet_move_is_not_free_material():
+    assert not wins_free_material(chess.Board(), mv("e2e4"))
+
+
+def test_positional_tag_for_quiet_best():
+    b = chess.Board(_MIDDLE)
+    assert is_quiet(b, mv("f1b5"))
+    assert tag_move(b, mv("a2a3"), mv("f1b5"), 60, None) == ["positional"]
+
+
+def test_no_positional_when_best_is_forcing():
+    b = chess.Board("r1bqkbnr/ppp2ppp/2n5/3pp3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 13")
+    assert "positional" not in tag_move(b, mv("a2a3"), mv("e4d5"), 60, None)
+
+
+def test_no_positional_when_hanging_piece_tagged():
+    b = chess.Board("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2")
+    tags = tag_move(b, mv("d1g4"), mv("g1f3"), 400, None)
+    assert "hanging_piece" in tags and "positional" not in tags
+
+
+def test_no_tags_for_cpl_20_even_with_quiet_best():
+    assert tag_move(chess.Board(_MIDDLE), mv("a2a3"), mv("f1b5"), 20, None) == []

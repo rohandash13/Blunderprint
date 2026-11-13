@@ -1,7 +1,7 @@
 """Rule-based, explainable mistake tags."""
 import chess
 
-MISTAKE_CPL = 100
+TAG_MIN_CPL = 30
 _VALUE = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
 
 
@@ -27,13 +27,37 @@ def _forcing(board: chess.Board, move: chess.Move) -> bool:
     return board.is_capture(move) or board.gives_check(move)
 
 
+def is_quiet(board: chess.Board, move: chess.Move) -> bool:
+    """Not a capture, not a check, not a promotion."""
+    return not (board.is_capture(move) or board.gives_check(move) or move.promotion)
+
+
+def wins_free_material(board: chess.Board, move: chess.Move) -> bool:
+    """Mate in one, or a capture of an undefended piece / a clearly favourable trade (gain >= 2)."""
+    b = board.copy()
+    capturing = b.piece_type_at(move.from_square)
+    if board.is_en_passant(move):
+        captured = chess.PAWN
+    else:
+        captured = b.piece_type_at(move.to_square)
+    mover = b.turn
+    b.push(move)
+    if b.is_checkmate():
+        return True
+    if captured is None:
+        return False
+    if not b.attackers(not mover, move.to_square):
+        return True
+    return _VALUE.get(captured, 0) - _VALUE.get(capturing, 0) >= 2
+
+
 def _non_pawn_pieces(board: chess.Board) -> int:
     return sum(1 for p in board.piece_map().values() if p.piece_type not in (chess.PAWN, chess.KING))
 
 
 def tag_move(board_before: chess.Board, played: chess.Move, best: chess.Move | None,
              cpl: int, clock_cs: int | None) -> list[str]:
-    if cpl < MISTAKE_CPL:
+    if cpl < TAG_MIN_CPL:
         return []
     tags = []
     if _hanging_after(board_before, played):
@@ -46,4 +70,6 @@ def tag_move(board_before: chess.Board, played: chess.Move, best: chess.Move | N
         tags.append("endgame_technique")
     if clock_cs is not None and clock_cs < 3000:
         tags.append("time_trouble")
+    if best is not None and is_quiet(board_before, best) and not {"hanging_piece", "missed_tactic"} & set(tags):
+        tags.append("positional")
     return tags or ["other"]
