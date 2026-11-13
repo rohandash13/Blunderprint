@@ -1,61 +1,67 @@
 {
   "username": "Knight_ofthelight73",
-  "candidates": 78,
+  "candidates": 77,
   "levels": {
     "slip": {
-      "count": 40,
-      "share": 0.5128,
-      "avg_win_drop": 0.1523,
+      "count": 35,
+      "share": 0.4545,
+      "avg_win_drop": 0.1616,
       "by_kind": {
-        "positional": 31,
-        "tactical": 9
+        "positional": 24,
+        "tactical": 11
       },
       "by_pattern": {
-        "positional": 26,
-        "time_trouble": 6,
-        "other": 3,
+        "positional": 21,
+        "time_trouble": 5,
+        "other": 4,
         "hanging_piece": 3,
         "missed_tactic": 2
       }
     },
     "tricky": {
-      "count": 28,
-      "share": 0.359,
-      "avg_win_drop": 0.1286,
+      "count": 19,
+      "share": 0.2468,
+      "avg_win_drop": 0.1222,
       "by_kind": {
-        "positional": 26,
-        "tactical": 2
+        "positional": 16,
+        "tactical": 3
       },
       "by_pattern": {
-        "positional": 21,
-        "hanging_piece": 3,
+        "positional": 13,
+        "hanging_piece": 2,
+        "other": 1,
+        "missed_tactic": 1,
+        "opening_error": 1,
+        "time_trouble": 1
+      }
+    },
+    "deep": {
+      "count": 9,
+      "share": 0.1169,
+      "avg_win_drop": 0.122,
+      "by_kind": {
+        "tactical": 5,
+        "positional": 4
+      },
+      "by_pattern": {
+        "positional": 4,
         "time_trouble": 2,
+        "endgame_technique": 1,
         "other": 1,
         "missed_tactic": 1
       }
     },
-    "deep": {
-      "count": 10,
-      "share": 0.1282,
-      "avg_win_drop": 0.1064,
+    "unrated": {
+      "count": 14,
+      "share": 0.1818,
+      "avg_win_drop": 0.1162,
       "by_kind": {
-        "positional": 6,
-        "tactical": 4
+        "positional": 14
       },
       "by_pattern": {
-        "positional": 6,
-        "time_trouble": 1,
-        "other": 1,
-        "missed_tactic": 1,
-        "opening_error": 1
+        "positional": 13,
+        "hanging_piece": 1
       }
-    },
-    "unrated": {
-      "count": 0,
-      "share": 0.0,
-      "avg_win_drop": null,
-      "by_kind": {},
-      "by_pattern": {}
     }
   }
 }

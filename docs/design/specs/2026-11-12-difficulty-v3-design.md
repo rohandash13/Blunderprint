@@ -37,7 +37,7 @@ Computed once per move during scoring and stored in `move_analysis` (Flyway `V3`
 | `win_drop double` | Java, from cached evals | Drop in winning chances on the [0,1] scale, from the mover's side: `wc(best) − wc(played)` with `wc(cp) = 1 / (1 + exp(−0.00368208·cp))` (the Lichess win-chance curve). |
 | `best_quiet bool` | Python `/analyze` | Best move is not a capture, check or promotion, and its line is not tactical (see below). |
 | `best_free_material bool` | Python `/analyze` | Best move captures a piece that is undefended, or worth more than the capturing piece (net gain ≥ 2 pawns). Also true for mate in 1. |
-| `find_depth int` | Java, Stockfish trace | Shallowest iterative-deepening depth from which Stockfish's first PV move equals the stored `best_uci` (the move being drilled) at every later depth (search to depth 14). |
+| `find_depth int` | Java, Stockfish trace | Shallowest iterative-deepening depth from which Stockfish's first PV move equals the stored `best_uci` (the move being drilled) at every later depth (search to `engine.depth`, the same depth the stored best move came from, 12 by default). |
 | `only_move bool` | Java, Stockfish MultiPV 2 | The stored best move is the final multipv-1 move and beats the second-best by ≥ 0.10 in win chance (one move clearly works). |
 | `difficulty_elo int` | Java, `DifficultyEstimator` | Estimated rating at which players usually find the move (below). |
 
@@ -50,7 +50,7 @@ gain). `best_quiet = is_quiet(best) and not best_line_is_tactical`; the `positio
 definition. `best_free_material` is unchanged.
 
 **Trace against the stored best move.** The trace describes the move that is drilled, not whatever Stockfish
-prefers at depth 14. `EngineTracer.trace(fenKey, targetUci)` measures `find_depth` against `targetUci` (the stored
+prefers in a deeper search; it runs at the analysis depth so the two usually agree. `EngineTracer.trace(fenKey, targetUci)` measures `find_depth` against `targetUci` (the stored
 `move_analysis.best_uci`) and reports `targetIsBest` (the final multipv-1 first move is the target) and the
 multipv-2 first move. `only_move` is computed as above when `targetIsBest`; otherwise (the target is the final multipv-2 move, where
 `find_depth` would just be the final depth, or in neither line) `find_depth`, `only_move` and `difficulty_elo` stay null
