@@ -40,7 +40,7 @@ def _balance(board: chess.Board, color: bool) -> int:
     return total
 
 
-def best_line_is_tactical(board: chess.Board, best_pv: str | None) -> bool:
+def best_line_is_tactical(board: chess.Board, best_pv: str | None, best: chess.Move | None = None) -> bool:
     """The best move is a check evasion, or its line (<= 4 plies) mates or wins >= 2 material.
 
     Material is only compared after an opponent reply, so a sacrifice that is recaptured is not a gain.
@@ -49,6 +49,8 @@ def best_line_is_tactical(board: chess.Board, best_pv: str | None) -> bool:
         return True
     if not best_pv:
         return False
+    if best is not None and best_pv.split()[0] != best.uci():
+        return False          # the line belongs to another move
     mover = board.turn
     start = _balance(board, mover)
     b = board.copy()
@@ -69,7 +71,7 @@ def best_line_is_tactical(board: chess.Board, best_pv: str | None) -> bool:
 
 def best_is_quiet(board: chess.Board, best: chess.Move, best_pv: str | None = None) -> bool:
     """Quiet by move type and not part of a tactic (check evasion, forced mate, material win)."""
-    return is_quiet(board, best) and not best_line_is_tactical(board, best_pv)
+    return is_quiet(board, best) and not best_line_is_tactical(board, best_pv, best)
 
 
 def wins_free_material(board: chess.Board, move: chess.Move) -> bool:

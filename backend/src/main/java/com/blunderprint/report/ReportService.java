@@ -107,7 +107,9 @@ public class ReportService {
 
         // When no candidate in the run has an estimate yet, show unrated ones rather than nothing.
         List<String> effective = new ArrayList<>(levels);
-        boolean allUnrated = !cands.isEmpty() && cands.stream().allMatch(c -> c.level().equals("unrated"));
+        // Clock candidates are not level-filtered, so only the others decide whether levels exist at all.
+        List<Cand> levelled = cands.stream().filter(c -> !c.tag().equals("time_trouble")).toList();
+        boolean allUnrated = !levelled.isEmpty() && levelled.stream().allMatch(c -> c.level().equals("unrated"));
         if (allUnrated && !effective.contains("unrated")) effective.add("unrated");
         boolean clockExamples = effective.contains("slip");
 

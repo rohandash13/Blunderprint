@@ -160,16 +160,14 @@ public class AnalysisService {
             var trace = c.bestUci() == null ? java.util.Optional.<Trace>empty() : tracer.trace(c.beforeKey(), c.bestUci());
             if (trace.isEmpty()) { failures++; continue; }
             var t = trace.get();
-            boolean only;
-            if (t.targetIsBest()) {
-                only = t.secondCp() != null
-                    && WinChance.of(t.bestCp()) - WinChance.of(t.secondCp()) >= ONLY_MOVE_GAP;
-            } else if (c.bestUci().equals(t.secondUci())) {
-                only = false;
-            } else {
-                disagreed++;       // the drilled move is in neither of the trace's lines
+            if (!t.targetIsBest()) {
+                // The drilled move is not the engine's final choice (even as its second line, find_depth would
+                // just be the final depth), so the trace says nothing reliable about it.
+                disagreed++;
                 continue;
             }
+            boolean only = t.secondCp() != null
+                && WinChance.of(t.bestCp()) - WinChance.of(t.secondCp()) >= ONLY_MOVE_GAP;
             int elo = DifficultyEstimator.estimate(t.findDepth(), c.freeMaterial(), c.quiet(), only);
             jdbc.update("update move_analysis set find_depth = ?, only_move = ?, difficulty_elo = ? where move_id = ?",
                 t.findDepth(), only, elo, c.moveId());

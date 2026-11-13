@@ -260,4 +260,15 @@ class ReportServiceIT extends PostgresIT {
         var withSlip = reports.report("alice", List.of("slip", "tricky")).orElseThrow();
         assertEquals(Map.of("slip", 1, "tricky", 2, "deep", 0, "unrated", 0), withSlip.levelCounts());
     }
+
+    @Test
+    void unratedFallbackIgnoresRatedClockCandidates() {
+        UUID run = UUID.randomUUID();
+        seed(run, "DONE");
+        move(run, 2, 300, 0.4, "{hanging_piece}", 0.2, false, null);
+        move(run, 4, 300, 0.4, "{time_trouble}", 0.2, false, 1100);          // rated clock candidate
+        var r = reports.report("alice").orElseThrow();
+        var hanging = r.patterns().stream().filter(p -> p.tag().equals("hanging_piece")).findFirst().orElseThrow();
+        assertEquals("unrated", hanging.examples().get(0).level());
+    }
 }

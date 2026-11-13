@@ -194,3 +194,12 @@ def test_pv_is_cut_at_the_first_illegal_move_and_after_four_plies():
     assert not best_line_is_tactical(b, "b2b4 e8e7 zzzz b4c5")          # garbage stops the walk
     assert not best_line_is_tactical(b, "b2b4 e8e7 e1e8 b4c5")          # illegal ply 3 stops the walk
     assert not best_line_is_tactical(b, "b2b4 e8e7 b4b5 e7e6 b5c6 e6e5 c6c7")  # only 4 plies are read
+
+
+def test_pv_whose_first_move_is_not_best_is_ignored():
+    b = chess.Board(_WINS_QUEEN)
+    pv = "b2b4 e8e7 b4c5 e7e6"
+    assert best_line_is_tactical(b, pv, mv("b2b4"))
+    assert not best_line_is_tactical(b, pv, mv("e1d1"))          # stale PV for another move
+    assert best_is_quiet(b, mv("e1d1"), pv)
+    assert best_line_is_tactical(chess.Board(_IN_CHECK), pv, mv("e1d1"))   # in-check rule still applies

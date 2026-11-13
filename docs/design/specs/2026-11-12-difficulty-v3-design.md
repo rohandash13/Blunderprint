@@ -52,8 +52,8 @@ definition. `best_free_material` is unchanged.
 **Trace against the stored best move.** The trace describes the move that is drilled, not whatever Stockfish
 prefers at depth 14. `EngineTracer.trace(fenKey, targetUci)` measures `find_depth` against `targetUci` (the stored
 `move_analysis.best_uci`) and reports `targetIsBest` (the final multipv-1 first move is the target) and the
-multipv-2 first move. `only_move` is computed as above when `targetIsBest`; `false` when the target is the final
-multipv-2 move; and when the target is in neither line, `find_depth`, `only_move` and `difficulty_elo` stay null
+multipv-2 first move. `only_move` is computed as above when `targetIsBest`; otherwise (the target is the final multipv-2 move, where
+`find_depth` would just be the final depth, or in neither line) `find_depth`, `only_move` and `difficulty_elo` stay null
 (the move reads as `unrated`) and the run's log line counts it as "trace disagreed".
 
 The trace (`find_depth`, `only_move`) runs only for candidate moves (§2), so it costs one MultiPV-2 search per
@@ -108,6 +108,9 @@ positions that are not there. Pattern counts are unchanged (clock errors always 
 exactly like `AnalysisService.score` (join on `before_key`/`after_key` with the run's engine and depth,
 `multipv = 1`). `difficulty_elo` stays null, so those moves are `unrated` (and, when every candidate is unrated,
 the all-unrated fallback shows them) until the run is rescored.
+
+**Rescore without an engine.** Stale trace values are cleared by design, so a rescore with no working Stockfish
+yields an all-unrated report (the all-unrated fallback still lists the examples).
 
 **Scheduling and rescore.** `spring.task.scheduling.pool.size: 2`, so tracing inside `tick()` does not block
 the worker reaper. `score()` no longer nulls `find_depth`/`only_move`/`difficulty_elo` in its upsert; after the

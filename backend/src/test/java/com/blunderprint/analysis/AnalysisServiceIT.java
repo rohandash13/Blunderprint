@@ -247,16 +247,16 @@ class AnalysisServiceIT extends PostgresIT {
     }
 
     @Test
-    void targetOnlyInSecondLineIsNeverAnOnlyMove() {
+    void targetOnlyInSecondLineIsTreatedAsDisagreed() {
         seed();
         seedEvals();
         stubModel(0.4, false, false);
-        // The engine now prefers another move; the drilled one is its second line.
+        // The engine now prefers another move; findDepth for the second line would just be the final depth.
         when(tracer.trace("A", "d2d4")).thenReturn(Optional.of(new Trace("g1f3", 300, 100, "d2d4", 14, false)));
         analysis.tick();
-        assertEquals(false, diffCol("only_move"));
-        assertEquals(14, diffCol("find_depth"));
-        assertEquals(DifficultyEstimator.estimate(14, false, false, false), diffCol("difficulty_elo"));
+        assertNull(diffCol("find_depth"));
+        assertNull(diffCol("only_move"));
+        assertNull(diffCol("difficulty_elo"));
     }
 
     @Test
