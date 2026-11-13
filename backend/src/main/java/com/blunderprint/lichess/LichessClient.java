@@ -11,8 +11,11 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +25,15 @@ public class LichessClient {
     private final HttpClient http = HttpClient.newHttpClient();
     private final String baseUrl;
     private final String token;
+    private final Map<String, CachedUser> userCache = new ConcurrentHashMap<>();
+
+    /** One rating category from the public user API. */
+    public record Perf(int rating, int games, int prog) {}
+
+    private record CachedUser(Map<String, Perf> perfs, long atMs) {}
+
+    private static final long USER_TTL_MS = 10 * 60 * 1000L;
+    private static final List<String> PERF_KEYS = List.of("bullet", "blitz", "rapid", "classical");
 
     public LichessClient(@Value("${lichess.base-url}") String baseUrl, @Value("${lichess.token:}") String token) {
         this.baseUrl = baseUrl;
@@ -49,6 +61,49 @@ public class LichessClient {
         } catch (IOException | InterruptedException e) {
             throw new IllegalStateException("Lichess request failed", e);
         }
+    }
+
+    /**
+     * Public ratings per category (only categories with games), cached 10 minutes; null when Lichess is
+     * unreachable or answers anything but 200, so callers can still render without ratings.
+     */
+    public Map<String, Perf> fetchUser(String username) {
+        String key = username.toLowerCase(java.util.Locale.ROOT);
+        CachedUser c = userCache.get(key);
+        if (c != null && System.currentTimeMillis() - c.atMs() < USER_TTL_MS) return c.perfs();
+        try {
+            HttpRequest.Builder rb = HttpRequest.newBuilder(
+                    URI.create(baseUrl + "/api/user/" + URLEncoder.encode(username, StandardCharsets.UTF_8)))
+                .header("Accept", "application/json").header("User-Agent", "blunderprint/0.1")
+                .timeout(java.time.Duration.ofSeconds(8));
+            if (!token.isBlank()) rb.header("Authorization", "Bearer " + token);
+            HttpResponse<String> resp = http.send(rb.build(), HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) return null;
+            Map<String, Perf> perfs = parseUser(resp.body());
+            userCache.put(key, new CachedUser(perfs, System.currentTimeMillis()));
+            return perfs;
+        } catch (IOException | RuntimeException e) {
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+    }
+
+    static Map<String, Perf> parseUser(String json) {
+        Map<String, Perf> out = new LinkedHashMap<>();
+        try {
+            JsonNode perfs = MAPPER.readTree(json).path("perfs");
+            for (String k : PERF_KEYS) {
+                JsonNode p = perfs.path(k);
+                if (p.path("games").asInt(0) > 0 && p.has("rating")) {
+                    out.put(k, new Perf(p.get("rating").asInt(), p.get("games").asInt(), p.path("prog").asInt(0)));
+                }
+            }
+        } catch (IOException e) {
+            throw new IllegalArgumentException("bad user json", e);
+        }
+        return out;
     }
 
     static Optional<LichessGame> parseLine(String json) {

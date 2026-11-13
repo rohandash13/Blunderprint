@@ -22,6 +22,18 @@ class LichessClientTest {
     }
 
     @Test
+    void parsesUserPerfs() {
+        var perfs = LichessClient.parseUser("""
+            {"id":"alice","perfs":{"blitz":{"games":420,"rating":1650,"rd":50,"prog":12},
+             "rapid":{"games":10,"rating":1500,"rd":90},"puzzle":{"games":5,"rating":1900,"rd":60,"prog":1},
+             "bullet":{"games":0,"rating":1500,"rd":500,"prog":0}}}""");
+        assertEquals(new LichessClient.Perf(1650, 420, 12), perfs.get("blitz"));
+        assertEquals(new LichessClient.Perf(1500, 10, 0), perfs.get("rapid"));
+        assertFalse(perfs.containsKey("puzzle"));
+        assertFalse(perfs.containsKey("bullet"));
+    }
+
+    @Test
     void drawHasHalfPointResult() {
         String draw = LINE.replace("\"winner\":\"white\",", "");
         assertEquals("1/2-1/2", LichessClient.parseLine(draw).orElseThrow().result());

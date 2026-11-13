@@ -2,6 +2,7 @@ package com.blunderprint.api;
 
 import com.blunderprint.analysis.AnalysisService;
 import com.blunderprint.ingest.IngestService;
+import com.blunderprint.report.ProfileService;
 import com.blunderprint.report.ReportService;
 import com.blunderprint.store.JobQueueRepository;
 import com.blunderprint.worker.WorkerPool;
@@ -25,9 +26,12 @@ public class AnalysisController {
     private final WorkerPool pool;
     private final int defaultDepth;
     private final ReportService reports;
+    private final ProfileService profiles;
 
     public AnalysisController(IngestService ingest, AnalysisService analysis, JobQueueRepository queue,
-                              WorkerPool pool, @Value("${engine.depth}") int defaultDepth, ReportService reports) {
+                              WorkerPool pool, @Value("${engine.depth}") int defaultDepth, ReportService reports,
+                              ProfileService profiles) {
+        this.profiles = profiles;
         this.ingest = ingest;
         this.analysis = analysis;
         this.queue = queue;
@@ -45,6 +49,19 @@ public class AnalysisController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
         return reports.report(username, parsed).<ResponseEntity<?>>map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/players/{username}/profile")
+    public ResponseEntity<?> profile(@PathVariable String username) {
+        return profiles.profile(username).<ResponseEntity<?>>map(ResponseEntity::ok)
+            .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/players/{username}/positions/{gameId}/{ply}")
+    public ResponseEntity<?> position(@PathVariable String username, @PathVariable String gameId,
+                                      @PathVariable int ply) {
+        return profiles.position(username, gameId, ply).<ResponseEntity<?>>map(ResponseEntity::ok)
             .orElse(ResponseEntity.notFound().build());
     }
 
