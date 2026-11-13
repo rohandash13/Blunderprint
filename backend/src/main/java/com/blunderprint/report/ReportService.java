@@ -160,7 +160,7 @@ public class ReportService {
                 boolean candidate = winDrop != null && winDrop >= INACCURACY && pPlayed != null && pPlayed >= minP
                     && (winDrop >= MISTAKE || Boolean.TRUE.equals(quiet));
                 return new MistakeRow(rs.getString("game_id"), rs.getLong("t"), rs.getInt("ply"), rs.getInt("cpl"),
-                    pPlayed, tagsOf(rs), pBest, winDrop, quiet == null ? null : kind(quiet),
+                    pPlayed, tagsOf(rs), pBest, winDrop, kind(quiet),
                     winDrop != null && winDrop >= INACCURACY ? severity(winDrop) : null, elo,
                     candidate ? difficulty.level(elo, rating) : null);
             }, run);

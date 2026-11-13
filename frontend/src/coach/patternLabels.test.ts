@@ -14,6 +14,6 @@ describe("sortPatterns", () => {
 describe("patternLabel", () => {
   it("falls back for unknown tags", () => {
     expect(patternLabel("foo_bar").name).toBe("foo bar");
-    expect(patternLabel("other").name).toBe("Uncategorized middlegame mistakes");
+    expect(patternLabel("other").name).toBe("Uncategorized mistakes");
   });
 });

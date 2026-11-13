@@ -92,7 +92,7 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   },
   {
     name: "set_levels",
-    description: "Change which challenge levels the report and drills use: slip (easy moves the player missed), tricky (needs some calculation), deep (moves most players at their rating miss). Use when the player asks for easier or harder positions.",
+    description: "Change which challenge levels the report and drills use: slip (something they would usually spot at their level), tricky (worth slowing down for), deep (a stretch at their level). Use when the player asks for easier or harder positions.",
     parameters: {
       type: "object",
       properties: { levels: { type: "array", items: { type: "string", enum: ["slip", "tricky", "deep"] }, description: "One or more levels" } },
@@ -165,7 +165,8 @@ const PATTERN_INFO: Record<string, { name: string; description: string }> = {
   opening_error: { name: "Opening mistakes", description: "Opening mistakes — in the first 10 moves" },
   endgame_technique: { name: "Endgame technique", description: "Endgame technique — with few pieces left" },
   time_trouble: { name: "Time trouble", description: "Time trouble — under 30 seconds on the clock" },
-  other: { name: "Uncategorized middlegame mistakes", description: "Uncategorized middlegame mistakes — positional or strategic errors no rule matched" },
+  positional: { name: "Positional decisions", description: "Positional decisions — a quiet move was best, no capture or check, just the right plan" },
+  other: { name: "Uncategorized mistakes", description: "Uncategorized mistakes — tactical errors no other rule matched" },
 };
 
 const NO_DRILL = { error: "no drill in progress; call start_drill first" };
