@@ -30,7 +30,8 @@ describe("profileInsights", () => {
   });
 
   it("zero or one missed-tactic marks is 'rarely misses forcing wins'", () => {
-    expect(ids(profileInsights(profile()).strengths)).toContain("tactics");
+    expect(ids(profileInsights(profile({ patterns: [pat("hanging_piece", 7), pat("missed_tactic", 1), pat("other", 2)] })).strengths)).toContain("tactics");
+    expect(ids(profileInsights(profile()).strengths)).not.toContain("tactics"); // 9 uncategorized tactical errors
     expect(ids(profileInsights(profile({ patterns: [pat("hanging_piece", 5)] })).strengths)).toContain("tactics");
     expect(ids(profileInsights(profile({ patterns: [pat("hanging_piece", 5), pat("missed_tactic", 2)] })).strengths)).not.toContain("tactics");
   });
@@ -62,5 +63,30 @@ describe("recommendedPattern", () => {
     expect(recommendedPattern(profile())?.tag).toBe("hanging_piece");
     expect(recommendedPattern(profile({ patterns: [pat("other", 4)] }))?.tag).toBe("other");
     expect(recommendedPattern(profile({ patterns: [] }))).toBeNull();
+  });
+});
+
+describe("phase wording and sample size", () => {
+  it("speaks of slipping most often, never of a share of mistakes", () => {
+    const leak = profileInsights(profile()).leaks.find((l) => l.id === "phase:middlegame")!;
+    expect(leak.text).toBe("You slip most often in the middlegame");
+    expect(leak.phrase).toBe("you slip most often in the middlegame");
+    expect(JSON.stringify(profileInsights(profile()))).not.toContain("most of your mistakes");
+  });
+
+  it("ignores phases with fewer than 30 of the player's moves", () => {
+    const r = profileInsights(profile({ phaseMoves: { opening: 200, middlegame: 20, endgame: 150 } }));
+    const phaseIds = ids([...r.strengths, ...r.leaks]).filter((i) => i.startsWith("phase:"));
+    expect(phaseIds).toEqual(["phase:opening", "phase:endgame"]); // middlegame (highest rate) is excluded
+    expect(r.leaks.map((l) => l.id)).toContain("phase:endgame");
+    const one = profileInsights(profile({ phaseMoves: { opening: 200, middlegame: 10, endgame: 10 } }));
+    expect(ids([...one.strengths, ...one.leaks]).some((i) => i.startsWith("phase:"))).toBe(false);
+  });
+
+  it("without phaseMoves a zero-rate phase is not called a strength", () => {
+    const r = profileInsights(profile({ phases: { opening: 0, middlegame: 6, endgame: 4 } }));
+    expect(ids(r.strengths)).not.toContain("phase:opening");
+    const withMoves = profileInsights(profile({ phases: { opening: 0, middlegame: 6, endgame: 4 }, phaseMoves: { opening: 100, middlegame: 100, endgame: 100 } }));
+    expect(ids(withMoves.strengths)).toContain("phase:opening");
   });
 });

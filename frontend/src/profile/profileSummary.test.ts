@@ -46,3 +46,10 @@ describe("profileSummary", () => {
     expect(sentences(s).length).toBeLessThanOrEqual(4);
   });
 });
+
+describe("plurals", () => {
+  it("says 1 game and 1 move", () => {
+    const s = profileSummary({ ...base, analyzed: { games: 1, moves: 1, from: null, to: null } });
+    expect(s).toContain("1 game, 1 move in all");
+  });
+});

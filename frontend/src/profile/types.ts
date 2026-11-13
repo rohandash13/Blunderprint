@@ -47,6 +47,8 @@ export interface Profile {
   record: { white: WinDrawLoss; black: WinDrawLoss };
   /** Candidate mistakes per 100 of the player's moves. */
   phases: { opening: number; middlegame: number; endgame: number };
+  /** The player's move counts per phase; optional until the backend sends it. */
+  phaseMoves?: { opening: number; middlegame: number; endgame: number };
   kinds: { positional: number; tactical: number };
   clock: { underThirtyShare: number; mistakeRateUnder30: number; mistakeRateOver30: number };
   grid: GridGame[];

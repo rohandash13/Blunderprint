@@ -23,9 +23,9 @@ export function plyCaption(f: MoveFacts, you: "White" | "Black"): string {
 
   const owner = f.side === you ? "their" : "your";
   const byValue = (a: string, b: string) => VALUE[b] - VALUE[a];
-  if (f.fork) {
-    const targets = f.attacks.map((a) => a.piece).sort(byValue);
-    return `${text}, forking ${owner} ${list(targets)}`;
+  const forked = f.forkTargets.filter((p) => p !== "pawn").sort(byValue);
+  if (f.fork && forked.length >= 2) {
+    return `${text}, forking ${owner} ${list(forked)}`;
   }
   const parts: string[] = [];
   if (f.check) parts.push("giving check");

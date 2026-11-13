@@ -17,6 +17,7 @@ export interface Insights {
 
 const PHASES = ["opening", "middlegame", "endgame"] as const;
 const CLOCK_RATIO = 1.5;
+const MIN_PHASE_MOVES = 30;
 
 const asPattern = (p: ProfilePattern) => p as unknown as Pattern;
 
@@ -32,20 +33,23 @@ export function profileInsights(profile: Profile): Insights {
   const marks = profile.patterns.reduce((n, p) => n + p.count, 0) + profile.kinds.positional + profile.kinds.tactical;
   if (marks === 0) return { strengths, leaks };
 
-  const rates = PHASES.map((ph) => ({ ph, rate: profile.phases[ph] }));
-  const low = rates.reduce((a, b) => (b.rate < a.rate ? b : a));
-  const high = rates.reduce((a, b) => (b.rate > a.rate ? b : a));
-  if (high.rate > low.rate) {
+  // A phase counts only with a real sample: 30+ of the player's moves (when the backend says how many).
+  const rates = PHASES.filter((ph) => (profile.phaseMoves ? profile.phaseMoves[ph] >= MIN_PHASE_MOVES : true)).map((ph) => ({ ph, rate: profile.phases[ph] }));
+  const spread = rates.length >= 2;
+  const low = spread ? rates.reduce((a, b) => (b.rate < a.rate ? b : a)) : null;
+  const high = spread ? rates.reduce((a, b) => (b.rate > a.rate ? b : a)) : null;
+  const differ = !!low && !!high && high.rate > low.rate;
+  if (low && differ && (profile.phaseMoves || low.rate > 0)) {
     strengths.push({ id: `phase:${low.ph}`, text: `Steadiest in the ${low.ph}`, phrase: `you're steadiest in the ${low.ph}` });
   }
 
-  const missed = profile.patterns.find((p) => p.tag === "missed_tactic")?.count ?? 0;
-  if (missed <= 1) {
+  const count = (tag: string) => profile.patterns.find((p) => p.tag === tag)?.count ?? 0;
+  if (count("missed_tactic") <= 1 && count("other") <= 2) {
     strengths.push({ id: "tactics", text: "Rarely misses forcing wins", phrase: "you rarely miss forcing wins" });
   }
 
-  if (high.rate > low.rate) {
-    leaks.push({ id: `phase:${high.ph}`, text: `Most mistakes come in the ${high.ph}`, phrase: `most of your mistakes come in the ${high.ph}` });
+  if (high && differ) {
+    leaks.push({ id: `phase:${high.ph}`, text: `You slip most often in the ${high.ph}`, phrase: `you slip most often in the ${high.ph}` });
   }
 
   const top = (sortPatterns(profile.patterns.map(asPattern)) as unknown as ProfilePattern[]).find((p) => p.tag !== "other" && p.count > 0);

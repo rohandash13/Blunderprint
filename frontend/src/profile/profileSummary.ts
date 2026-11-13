@@ -9,6 +9,8 @@ export function mainRating(profile: Profile): { perf: string; rating: number } |
   return { perf, rating: r.rating };
 }
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 const record = (label: string, r: { w: number; d: number; l: number }) =>
   `${label} ${r.w} won, ${r.d} drawn and ${r.l} lost`;
 
@@ -19,7 +21,7 @@ const record = (label: string, r: { w: number; d: number; l: number }) =>
 export function profileSummary(profile: Profile): string {
   const { games, moves } = profile.analyzed;
   const out: string[] = [];
-  out.push(`I looked at ${games} games, ${moves} moves in all.`);
+  out.push(`I looked at ${plural(games, "game")}, ${plural(moves, "move")} in all.`);
 
   const main = mainRating(profile);
   const rec = `${record("as White", profile.record.white)}, ${record("as Black", profile.record.black)}`;

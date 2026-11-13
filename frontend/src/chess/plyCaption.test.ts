@@ -37,3 +37,20 @@ describe("plyCaption", () => {
     expect(cap("8/P6k/8/8/8/8/8/4K3 w - - 0 1", "a7a8q")).toBe("White moves the pawn to a8, promoting to a queen");
   });
 });
+
+describe("plyCaption edge cases", () => {
+  it("en passant reads as a pawn capture", () => {
+    expect(cap("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1", "e5d6")).toBe("White takes on d6 with the pawn");
+  });
+
+  it("capturing promotion", () => {
+    expect(cap("1r2k3/P7/8/8/8/8/8/4K3 w - - 0 1", "a7b8q")).toBe("White takes on b8 with the pawn, promoting to a queen, giving check");
+  });
+
+  it("a fork never lists pawns", () => {
+    // knight to c7 forks the king and rook; an undefended pawn on e6 also counts for the fork flag but is not named
+    const c = cap("r3k3/8/4p3/3N4/8/8/8/4K3 w - - 0 1", "d5c7");
+    expect(c).toBe("White moves the knight to c7, forking their king and rook");
+    expect(c).not.toContain("pawn");
+  });
+});

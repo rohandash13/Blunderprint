@@ -8,7 +8,7 @@ import type { StepDirection } from "./lineHistory";
 import { difficultyNote } from "./difficultyNote";
 import { plyCaption } from "../chess/plyCaption";
 import { patternLabel } from "./patternLabels";
-import { profileInsights, recommendedPattern } from "../profile/profileInsights";
+import { profileInsights } from "../profile/profileInsights";
 import { profileSummary } from "../profile/profileSummary";
 import type { Profile } from "../profile/types";
 import type { Example, Level, Report } from "../types";
@@ -37,7 +37,7 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   },
   {
     name: "get_report",
-    description: "Get the player's Blunderprint report: their recurring mistake patterns, each with a friendly name, description, count and average centipawn loss. Call this first, before discussing the player's play.",
+    description: "Get the player's Blunderprint report: their recurring mistake patterns, each with a friendly name, description, count and average centipawn loss. Call it before going into detail on specific patterns.",
     parameters: NO_ARGS,
   },
   {
@@ -141,9 +141,9 @@ export interface Drill {
 
 /** The engine line held back by play_move / try_move and shown one ply per next_move. */
 export interface PendingLine {
-  /** Position before each ply. */
   /** Position the player's move was made from. */
   base: string;
+  /** Position before each ply. */
   fens: string[];
   plies: MoveFacts[];
   you: "White" | "Black";
@@ -301,7 +301,13 @@ const lineSummary = (play: Awaited<ReturnType<typeof playOut>>) => ({
 });
 
 async function ensureReport(state: CoachState, fx: CoachEffects): Promise<Report | null> {
-  if (!state.report) state.report = await fx.fetchReport(state.levels);
+  if (!state.report) {
+    try {
+      state.report = await fx.fetchReport(state.levels);
+    } catch {
+      return null;
+    }
+  }
   return state.report;
 }
 
@@ -526,19 +532,30 @@ async function nextMove(state: CoachState, fx: CoachEffects) {
   const i = p.next;
   const f = p.plies[i];
   await fx.animateLine(p.fens[i], [f.uci], CURRENT);
-  p.next += 1;
-  if (p.follow && state.drill) state.drill.exploreFen = f.fenAfter;
   const out = plyOut(p, i);
-  if (out.done) state.pending = null;
+  // A move, reset or drill during the animation replaced the line: leave the new state alone.
+  if (state.pending === p) {
+    p.next += 1;
+    if (p.follow && state.drill) state.drill.exploreFen = f.fenAfter;
+    if (out.done) state.pending = null;
+  }
   return { ...out, ...(out.done && p.evalSpoken ? { evalSpoken: p.evalSpoken } : {}) };
 }
 
 async function getProfile(state: CoachState, fx: CoachEffects) {
-  if (!state.profile) state.profile = await fx.fetchProfile();
+  if (!state.profile) {
+    try {
+      state.profile = await fx.fetchProfile();
+    } catch {
+      return { error: "could not load the profile" };
+    }
+  }
   const profile = state.profile;
   if (!profile) return { error: "no profile yet" };
   const { strengths, leaks } = profileInsights(profile);
-  const top = recommendedPattern(profile);
+  const top = [...profile.patterns]
+    .filter((p) => p.tag !== "time_trouble" && p.tag !== "other")
+    .sort((a, b) => b.count - a.count)[0];
   return {
     summary: profileSummary(profile),
     gamesAnalyzed: profile.analyzed.games,
@@ -580,6 +597,7 @@ function stepLine(args: Record<string, unknown>, state: CoachState, fx: CoachEff
   if (!["back", "forward", "start", "end"].includes(dir)) return { error: "direction must be back, forward, start or end" };
   const r = fx.step(dir as StepDirection);
   if (!r) return { error: "Nothing to step to. Say so." };
+  state.pending = null; // stepping is manual navigation; the coach-paced line is dropped
   if (state.drill) {
     state.drill.exploreFen = r.fen; // try_move refuses when the opponent is to move there
     state.drill.awaitingReply = false;

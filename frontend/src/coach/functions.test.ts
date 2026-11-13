@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { BEST, CURRENT, FUNCTION_DEFS, PLAYED, PLAYOUT_PLIES, REPLY, handleFunctionCall, newCoachState, type Arrow, type CoachEffects } from "./functions";
+import { BEST, CURRENT, FUNCTION_DEFS, PLAYED, openPosition, PLAYOUT_PLIES, REPLY, handleFunctionCall, newCoachState, type Arrow, type CoachEffects } from "./functions";
 import type { Report } from "../types";
 import { describeEval } from "../chess/evalText";
 
@@ -761,5 +761,78 @@ describe("get_profile", () => {
 
   it("errors without a profile", async () => {
     expect((await call("get_profile", {}, newCoachState(), effects().fx)).error).toBe("no profile yet");
+  });
+});
+
+describe("review fixes", () => {
+  const LINE = { bestUci: "d7d5", scoreCp: -60, pv: ["d7d5", "c2c4", "e7e6"] };
+
+  it("an interrupt during next_move's animation does not wipe the new line", async () => {
+    const s = newCoachState();
+    const { fx } = effects(REPORT, LINE);
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    await call("play_move", { move: "d4" }, s, fx);
+    let release!: () => void;
+    fx.animateLine = () => new Promise<void>((r) => { release = r; });
+    const pending = call("next_move", {}, s, fx);
+    await Promise.resolve();
+    await call("reset_position", {}, s, fx); // interrupt
+    await call("play_move", { move: "c4" }, s, fx); // a new line
+    const fresh = s.pending;
+    expect(fresh).not.toBeNull();
+    release();
+    await pending;
+    expect(s.pending).toBe(fresh);
+    expect(fresh!.next).toBe(0);
+  });
+
+  it("step_line drops the pending line", async () => {
+    const s = newCoachState();
+    const { fx } = effects(REPORT, LINE);
+    await call("start_drill", { tag: "hanging_piece" }, s, fx);
+    await call("try_move", { move: "d4" }, s, fx);
+    expect(s.pending).not.toBeNull();
+    await call("step_line", { direction: "back" }, s, fx);
+    expect(s.pending).toBeNull();
+    expect((await call("next_move", {}, s, fx)).error).toBeDefined();
+  });
+
+  it("fetch failures come back as errors, not exceptions", async () => {
+    const s = newCoachState();
+    const { fx } = effects();
+    fx.fetchReport = vi.fn(async () => { throw new Error("boom"); });
+    fx.fetchProfile = vi.fn(async () => { throw new Error("boom"); });
+    expect((await call("get_report", {}, s, fx)).error).toBeDefined();
+    expect((await call("get_profile", {}, s, fx)).error).toBeDefined();
+  });
+
+  it("get_profile topPattern skips time_trouble and other; get_report no longer says call first", async () => {
+    const lv = { slip: 0, tricky: 0, deep: 0, unrated: 0 };
+    const mk = (tag: string, count: number) => ({ tag, count, lastSeen: null, levels: lv, kinds: { positional: 0, tactical: count } });
+    const s = newCoachState();
+    const { fx } = effects();
+    fx.fetchProfile = vi.fn(async () => ({
+      username: "a", ratings: null, analyzed: { games: 3, moves: 90, from: null, to: null },
+      record: { white: { w: 1, d: 0, l: 1 }, black: { w: 1, d: 0, l: 0 } },
+      phases: { opening: 1, middlegame: 2, endgame: 3 }, kinds: { positional: 1, tactical: 20 },
+      clock: { underThirtyShare: 0, mistakeRateUnder30: 0, mistakeRateOver30: 0 }, grid: [],
+      patterns: [mk("time_trouble", 12), mk("other", 9), mk("hanging_piece", 4), mk("positional", 2)],
+    }));
+    expect((await call("get_profile", {}, s, fx)).topPattern).toMatchObject({ tag: "hanging_piece", count: 4 });
+    expect(FUNCTION_DEFS.find((f) => f.name === "get_report")!.description).not.toMatch(/call this first/i);
+  });
+
+  it("openPosition starts a drill on a given example (grid click)", async () => {
+    const s = newCoachState();
+    const { fx, shown } = effects();
+    s.pending = { base: START, fens: [], plies: [], you: "White", next: 0, evalSpoken: null, follow: true };
+    const ex = REPORT.patterns[0].examples[1];
+    const r = openPosition("hanging_piece", ex, s, fx);
+    expect(r.status).toBe("Position ready, Black to move");
+    expect(s.drill).toMatchObject({ tag: "hanging_piece", example: ex, attempts: 0, exploreFen: AFTER_E4 });
+    expect(s.lastShown).toBe(ex);
+    expect(s.pending).toBeNull();
+    expect(shown.at(-1)!.fen).toBe(AFTER_E4);
+    expect(s.drilled.has("g2:1")).toBe(true);
   });
 });

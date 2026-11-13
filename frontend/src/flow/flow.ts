@@ -14,10 +14,10 @@ export interface FlowState {
 
 export type FlowAction =
   | { type: "submit"; username: string }
-  | { type: "existing"; status: PlayerStatus }
-  | { type: "started"; runId: string }
-  | { type: "done" }
-  | { type: "failed"; message: string }
+  | { type: "existing"; username: string; status: PlayerStatus }
+  | { type: "started"; username: string; runId: string }
+  | { type: "done"; username: string; runId: string }
+  | { type: "failed"; username: string; message: string }
   | { type: "goto"; step: Step }
   | { type: "chooseFocus"; tag: string }
   | { type: "openPosition" }
@@ -34,6 +34,9 @@ export function canGo(state: FlowState, step: Step): boolean {
 
 const reachProfile = (s: FlowState): FlowState => ({ ...s, step: "profile", error: null, unlocked: { ...s.unlocked, profile: true, focus: true } });
 
+/** Async results only count while the same player is still being analyzed. */
+const current = (s: FlowState, username: string) => s.step === "analyzing" && s.username?.toLowerCase() === username.trim().toLowerCase();
+
 export function flowReducer(state: FlowState, action: FlowAction): FlowState {
   switch (action.type) {
     case "submit": {
@@ -42,17 +45,18 @@ export function flowReducer(state: FlowState, action: FlowAction): FlowState {
       return { step: "analyzing", username, runId: null, error: null, unlocked: LOCKED, focusTag: null };
     }
     case "existing": {
+      if (!current(state, action.username)) return state;
       const { status, runId } = action.status;
       if (status === "DONE" && runId) return reachProfile({ ...state, runId });
-      if (status === "none") return { ...state, step: "analyzing", runId: null };
-      return { ...state, step: "analyzing", runId };
+      if (status === "none") return { ...state, runId: null };
+      return { ...state, runId };
     }
     case "started":
-      return { ...state, runId: action.runId };
+      return current(state, action.username) ? { ...state, runId: action.runId } : state;
     case "done":
-      return reachProfile(state);
+      return current(state, action.username) && state.runId === action.runId ? reachProfile(state) : state;
     case "failed":
-      return { ...state, step: "landing", error: action.message, unlocked: LOCKED, focusTag: null };
+      return current(state, action.username) ? { ...state, step: "landing", error: action.message, unlocked: LOCKED, focusTag: null } : state;
     case "goto":
       return canGo(state, action.step) ? { ...state, step: action.step } : state;
     case "chooseFocus":
