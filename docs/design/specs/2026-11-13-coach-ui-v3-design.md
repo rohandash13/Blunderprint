@@ -115,8 +115,9 @@ With `DEMO_MODE=true`, `POST /analysis` is allowed and limited by a new `Analysi
 - Global cap: `analysis.max-runs-per-day`, default 40. Per-IP cap: `analysis.max-runs-per-ip-per-day`, default 3.
   Over either cap the response is 429 `{"error": ...}`.
 - Unknown Lichess user or no rated games: 404 `{"error": "No rated games found for <u>"}`.
+- Every attempt counts toward `analysis.max-attempts-per-ip-per-hour` (20, never released, 429 beyond it); usernames that came back not-found are remembered for 10 minutes. `depth` is forced to the engine default. Unfinished runs older than 6 hours are ignored for reuse and queue positions.
 - `/admin/**` stays blocked.
-- `GET /players/{u}/status` returns `{status: "none" | "RUNNING" | "SCORING" | "DONE", runId, queuePosition}` so
+- `GET /players/{u}/status` returns `{status: "none" | "RUNNING" | "SCORING" | "DONE" | "FAILED", runId, queuePosition}` so
   the landing step can skip straight to the profile.
 
 ## 5. Visual system (Club Wallchart)

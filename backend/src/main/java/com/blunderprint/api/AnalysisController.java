@@ -99,25 +99,36 @@ public class AnalysisController {
     public ResponseEntity<?> start(@RequestBody AnalyzeRequest req, jakarta.servlet.http.HttpServletRequest http) {
         String username = req.username() == null ? "" : req.username().trim();
         if (username.isEmpty()) return ResponseEntity.badRequest().body(Map.of("error", "username is required"));
-        int depth = req.depth() == null ? defaultDepth : req.depth();
         if (!demo) {
             int max = req.maxGames() == null ? 100 : req.maxGames();
+            int depth = req.depth() == null ? defaultDepth : req.depth();
             return run(username, max, depth, null);
         }
-        if (!LICHESS_NAME.matcher(username).matches()) return noGames(username);
-        var reuse = gate.findReusable(username);
-        if (reuse.isPresent()) {
-            var r = reuse.get();
-            return ResponseEntity.accepted().body(new StartResponse(r.runId(), r.games(), r.moves(), 0, true,
-                r.queuePosition()));
-        }
-        AnalysisGate.Reservation slot;
+        String ip = com.blunderprint.config.ClientIp.of(http);
         try {
-            slot = gate.reserve(com.blunderprint.config.ClientIp.of(http));
+            gate.tryAttempt(ip);
         } catch (AnalysisGate.CapExceededException e) {
             return ResponseEntity.status(429).body(Map.of("error", e.getMessage()));
         }
-        return run(username, maxGames, depth, slot);
+        if (!LICHESS_NAME.matcher(username).matches()) {
+            return ResponseEntity.status(404).body(Map.of("error", "Not a valid Lichess username"));
+        }
+        synchronized (gate.lockFor(username)) {
+            if (gate.isKnownMissing(username)) return noGames(username);
+            var reuse = gate.findReusable(username);
+            if (reuse.isPresent()) {
+                var r = reuse.get();
+                return ResponseEntity.accepted().body(new StartResponse(r.runId(), r.games(), r.moves(), 0, true,
+                    r.queuePosition()));
+            }
+            AnalysisGate.Reservation slot;
+            try {
+                slot = gate.reserve(ip);
+            } catch (AnalysisGate.CapExceededException e) {
+                return ResponseEntity.status(429).body(Map.of("error", e.getMessage()));
+            }
+            return run(username, maxGames, defaultDepth, slot);
+        }
     }
 
     private ResponseEntity<?> run(String username, int max, int depth, AnalysisGate.Reservation slot) {
@@ -126,7 +137,10 @@ public class AnalysisController {
             return ResponseEntity.accepted().body(new StartResponse(res.runId(), res.games(), res.moves(),
                 res.jobsEnqueued(), false, AnalysisGate.queuePosition(jdbc, res.runId())));
         } catch (NoRatedGamesException e) {
-            if (slot != null) gate.release(slot);
+            if (slot != null) {
+                gate.release(slot);
+                gate.markMissing(username);
+            }
             return noGames(username);
         } catch (RuntimeException e) {
             if (slot != null) gate.release(slot);

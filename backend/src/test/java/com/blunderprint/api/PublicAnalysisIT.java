@@ -61,7 +61,7 @@ class PublicAnalysisIT extends PostgresIT {
 
     private ResultActions analyze(String user, String ip) throws Exception {
         return mvc.perform(post("/analysis").header("X-Forwarded-For", "9.9.9.9, " + ip)
-            .contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"" + user + "\",\"maxGames\":500}"));
+            .contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"" + user + "\",\"maxGames\":500,\"depth\":30}"));
     }
 
     @Test
@@ -74,7 +74,7 @@ class PublicAnalysisIT extends PostgresIT {
             .andExpect(jsonPath("$.jobsEnqueued").value(900))
             .andExpect(jsonPath("$.reused").value(false))
             .andExpect(jsonPath("$.queuePosition").value(0));
-        verify(ingest).ingest(eq("alice"), eq(40), anyInt());
+        verify(ingest).ingest(eq("alice"), eq(40), eq(12));
     }
 
     @Test
@@ -127,8 +127,29 @@ class PublicAnalysisIT extends PostgresIT {
     }
 
     @Test
-    void malformedUsernameIs404WithoutCallingLichess() throws Exception {
-        analyze("bad%20name&x", "4.4.4.4").andExpect(status().isNotFound());
+    void notFoundUsersAreNegativelyCachedForTenMinutes() throws Exception {
+        when(ingest.ingest(eq("nosuch"), anyInt(), anyInt())).thenThrow(new NoRatedGamesException("nosuch"));
+        analyze("nosuch", "6.6.6.1").andExpect(status().isNotFound());
+        analyze("NoSuch", "6.6.6.2").andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error").value("No rated games found for NoSuch"));
+        verify(ingest, times(1)).ingest(eq("nosuch"), anyInt(), anyInt());
+        clock.now = clock.now.plus(Duration.ofMinutes(11));
+        analyze("nosuch", "6.6.6.3").andExpect(status().isNotFound());
+        verify(ingest, times(2)).ingest(eq("nosuch"), anyInt(), anyInt());
+    }
+
+    @Test
+    void everyAttemptCountsPerIpPerHour() throws Exception {
+        for (int i = 0; i < 20; i++) analyze("bad name " + i, "7.7.7.7").andExpect(status().isNotFound());
+        analyze("bad name", "7.7.7.7").andExpect(status().isTooManyRequests());
+        clock.now = clock.now.plus(Duration.ofMinutes(61));
+        analyze("bad name", "7.7.7.7").andExpect(status().isNotFound());
+    }
+
+    @Test
+    void malformedUsernameIs404WithoutCallingLichessOrEchoing() throws Exception {
+        analyze("bad%20name&x", "4.4.4.4").andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error").value("Not a valid Lichess username"));
         verify(ingest, never()).ingest(anyString(), anyInt(), anyInt());
     }
 

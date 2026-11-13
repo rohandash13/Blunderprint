@@ -22,6 +22,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class AnalysisGate {
     private static final long DAY_MS = Duration.ofDays(1).toMillis();
+    private static final long HOUR_MS = Duration.ofHours(1).toMillis();
+    private static final long MISSING_TTL_MS = Duration.ofMinutes(10).toMillis();
+    private static final Duration STALE = Duration.ofHours(6);
 
     public record Reuse(UUID runId, int games, int moves, int queuePosition) {}
     public record PlayerStatus(String status, UUID runId, int queuePosition) {}
@@ -36,18 +39,51 @@ public class AnalysisGate {
     private final int maxPerDay;
     private final int maxPerIpPerDay;
     private final int reuseDays;
+    private final int maxAttemptsPerIpPerHour;
+    private final Map<String, Deque<Long>> attempts = new HashMap<>();
+    private final Map<String, Long> missing = new HashMap<>();
+    private final Object[] userLocks = new Object[256];
     private final Map<String, Deque<Long>> byIp = new HashMap<>();
     private final Deque<Long> global = new ArrayDeque<>();
 
     public AnalysisGate(JdbcTemplate jdbc, Clock clock,
                         @Value("${analysis.max-runs-per-day:40}") int maxPerDay,
                         @Value("${analysis.max-runs-per-ip-per-day:3}") int maxPerIpPerDay,
-                        @Value("${analysis.reuse-days:7}") int reuseDays) {
+                        @Value("${analysis.reuse-days:7}") int reuseDays,
+                        @Value("${analysis.max-attempts-per-ip-per-hour:20}") int maxAttemptsPerIpPerHour) {
+        this.maxAttemptsPerIpPerHour = maxAttemptsPerIpPerHour;
+        for (int i = 0; i < userLocks.length; i++) userLocks[i] = new Object();
         this.jdbc = jdbc;
         this.clock = clock;
         this.maxPerDay = maxPerDay;
         this.maxPerIpPerDay = maxPerIpPerDay;
         this.reuseDays = reuseDays;
+    }
+
+    /** Counts every POST attempt (never released); throws past the hourly per-IP limit. */
+    public synchronized void tryAttempt(String ip) {
+        long now = clock.millis();
+        attempts.values().removeIf(d -> { evict(d, now - HOUR_MS); return d.isEmpty(); });
+        Deque<Long> mine = attempts.computeIfAbsent(ip, k -> new ArrayDeque<>());
+        if (mine.size() >= maxAttemptsPerIpPerHour) {
+            throw new CapExceededException("Too many requests from this connection. Try again in a while.");
+        }
+        mine.addLast(now);
+    }
+
+    public synchronized boolean isKnownMissing(String username) {
+        long now = clock.millis();
+        missing.values().removeIf(t -> now - t >= MISSING_TTL_MS);
+        return missing.containsKey(username.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    public synchronized void markMissing(String username) {
+        missing.put(username.toLowerCase(java.util.Locale.ROOT), clock.millis());
+    }
+
+    /** Striped per-username lock so simultaneous requests for one new user ingest once. */
+    public Object lockFor(String username) {
+        return userLocks[Math.floorMod(username.toLowerCase(java.util.Locale.ROOT).hashCode(), userLocks.length)];
     }
 
     /** Takes one slot from both caps or throws; pair with {@link #release} if the run is not created. */
@@ -82,9 +118,10 @@ public class AnalysisGate {
         Timestamp cutoff = Timestamp.from(clock.instant().minus(Duration.ofDays(reuseDays)));
         List<UUID> ids = jdbc.queryForList("""
             select id from analysis_run
-            where lower(username) = lower(?) and status in ('DONE','RUNNING','SCORING') and created_at > ?
+            where lower(username) = lower(?) and created_at > ?
+              and (status = 'DONE' or (status in ('RUNNING','SCORING') and created_at > ?))
             order by created_at desc limit 1
-            """, UUID.class, username, cutoff);
+            """, UUID.class, username, cutoff, Timestamp.from(clock.instant().minus(STALE)));
         if (ids.isEmpty()) return Optional.empty();
         UUID id = ids.get(0);
         var counts = jdbc.queryForMap("select count(distinct game_id) g, count(*) m from move where run_id = ?", id);
@@ -102,6 +139,7 @@ public class AnalysisGate {
             select count(*) from analysis_run o, analysis_run r
             where r.id = ? and r.status in ('RUNNING','SCORING')
               and o.status in ('RUNNING','SCORING') and o.created_at < r.created_at
+              and o.created_at > now() - interval '6 hours'
             """, Integer.class, runId);
         return n == null ? 0 : n;
     }

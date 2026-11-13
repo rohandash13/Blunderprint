@@ -16,7 +16,7 @@ class AnalysisGateIT extends PostgresIT {
     private final Instant now = Instant.now();
 
     private AnalysisGate gate() {
-        return new AnalysisGate(jdbc, Clock.fixed(now, ZoneOffset.UTC), 40, 3, 7);
+        return new AnalysisGate(jdbc, Clock.fixed(now, ZoneOffset.UTC), 40, 3, 7, 20);
     }
 
     private UUID run(String user, String status, Instant createdAt) {
@@ -72,6 +72,16 @@ class AnalysisGateIT extends PostgresIT {
         assertEquals(1, g.queuePosition(b));
         assertEquals(2, g.queuePosition(c));
         assertEquals(2, analysis.progress(c).queuePosition());
+    }
+
+    @Test
+    void unfinishedRunsOlderThanSixHoursAreIgnored() {
+        run("old", "RUNNING", now.minusSeconds(7 * 3600));
+        run("alice", "RUNNING", now.minusSeconds(7 * 3600));
+        UUID c = run("c", "RUNNING", now.minusSeconds(100));
+        var g = gate();
+        assertEquals(0, g.queuePosition(c));
+        assertTrue(g.findReusable("alice").isEmpty());
     }
 
     @Test

@@ -20,7 +20,7 @@ class AnalysisGateTest {
     private final MutableClock clock = new MutableClock();
 
     private AnalysisGate gate(int global, int perIp) {
-        return new AnalysisGate(null, clock, global, perIp, 7);
+        return new AnalysisGate(null, clock, global, perIp, 7, 20);
     }
 
     @Test
@@ -48,6 +48,27 @@ class AnalysisGateTest {
         assertThrows(AnalysisGate.CapExceededException.class, () -> g.reserve("1.1.1.1"));
         clock.advance(Duration.ofHours(2));
         g.reserve("1.1.1.1");
+    }
+
+    @Test
+    void attemptsAreLimitedPerIpPerHourAndNeverReleased() {
+        var g = gate(40, 3);
+        for (int i = 0; i < 20; i++) g.tryAttempt("1.1.1.1");
+        assertThrows(AnalysisGate.CapExceededException.class, () -> g.tryAttempt("1.1.1.1"));
+        g.tryAttempt("2.2.2.2");
+        clock.advance(Duration.ofMinutes(61));
+        g.tryAttempt("1.1.1.1");
+    }
+
+    @Test
+    void missingUsersAreRememberedForTenMinutesCaseInsensitively() {
+        var g = gate(40, 3);
+        assertFalse(g.isKnownMissing("Ghost"));
+        g.markMissing("Ghost");
+        clock.advance(Duration.ofMinutes(9));
+        assertTrue(g.isKnownMissing("ghost"));
+        clock.advance(Duration.ofMinutes(2));
+        assertFalse(g.isKnownMissing("ghost"));
     }
 
     @Test

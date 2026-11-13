@@ -45,3 +45,4 @@ analysis:
   max-runs-per-ip-per-day: 3
   max-games: 40
   reuse-days: 7
+  max-attempts-per-ip-per-hour: 20

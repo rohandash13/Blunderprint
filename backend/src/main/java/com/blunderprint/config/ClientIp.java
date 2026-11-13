@@ -11,7 +11,8 @@ public final class ClientIp {
         String xff = req.getHeader("X-Forwarded-For");
         if (xff != null && !xff.isBlank()) {
             String[] hops = xff.split(",");
-            return hops[hops.length - 1].trim();
+            String last = hops.length == 0 ? "" : hops[hops.length - 1].trim();
+            if (!last.isEmpty()) return last;
         }
         return req.getRemoteAddr();
     }
