@@ -1,0 +1,23 @@
+{
+  "memory_limit_bytes": 536870912,
+  "checkpoint_sha256": "70938760d601877c87f3b3878531740ea68d5423a9f26c19914bfa2812c96ba0",
+  "image": "sha256:4598f24a425fe7c0e3914999b03f229a8719160e6a1fb0fa9f7e795169230412",
+  "oom_killed": false,
+  "memory_peak_bytes": 412323840,
+  "after_analyze": {
+    "BlockIO": "142MB / 795kB",
+    "CPUPerc": "0.16%",
+    "Container": "blunderprint-cnn-memory",
+    "ID": "31508f63f17d",
+    "MemPerc": "50.09%",
+    "MemUsage": "256.5MiB / 512MiB",
+    "Name": "blunderprint-cnn-memory",
+    "NetIO": "54.9kB / 33.5kB",
+    "PIDs": "40"
+  },
+  "request_batch_sizes": [
+    1,
+    256
+  ],
+  "notes": "Sequential requests with starting-position moves; Docker Desktop Linux cgroup. No concurrency stress test."
+}

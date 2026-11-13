@@ -1,6 +1,8 @@
 """Evaluate baselines and trained models on the held-out test split (player-disjoint)."""
 import json
 import os
+import hashlib
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -27,10 +29,10 @@ def evaluate(data_dir: str, checkpoints: dict[str, str], out_path: str) -> dict:
             dataset_meta = json.load(f)
     ckpts = {name: torch.load(p, map_location="cpu", weights_only=True) for name, p in checkpoints.items()}
     provenance = {"dataset": dataset_meta,
-                  "checkpoints": {name: {"path": checkpoints[name], "config": ck.get("config"),
-                                         "train_args": ck.get("train_args"),
-                                         "n_params": sum(v.numel() for v in ck["state_dict"].values()
-                                                         if v.is_floating_point())}
+                  "checkpoints": {name: {"path": checkpoints[name], "model": ck["model"],
+                                         "sha256": hashlib.sha256(Path(checkpoints[name]).read_bytes()).hexdigest(),
+                                         "config": ck.get("config"),
+                                         "train_args": ck.get("train_args")}
                                   for name, ck in ckpts.items()}}
     results = {"n_test": int(len(y)), "provenance": provenance}
     uniform = 1.0 / nlegal
@@ -39,6 +41,7 @@ def evaluate(data_dir: str, checkpoints: dict[str, str], out_path: str) -> dict:
                                         for b in np.unique(rb.numpy())}}
     for name in checkpoints:
         model = model_from_checkpoint(ckpts[name])
+        provenance["checkpoints"][name]["n_params"] = sum(p.numel() for p in model.parameters())
         correct = []
         with torch.no_grad():
             for i in range(0, len(y), 4096):
@@ -59,6 +62,6 @@ if __name__ == "__main__":
                     help="checkpoint to evaluate (repeatable); default: linear and mlp")
     ap.add_argument("--out", default="../results/model_eval.json")
     args = ap.parse_args()
-    ckpts = dict(c.split("=", 1) for c in args.ckpt) if args.ckpt else         {"linear": "checkpoints/linear.pt", "mlp": "checkpoints/mlp.pt"}
+    ckpts = dict(c.split("=", 1) for c in args.ckpt) if args.ckpt else {"linear": "checkpoints/linear.pt", "mlp": "checkpoints/mlp.pt"}
     r = evaluate(args.data, ckpts, args.out)
     print(json.dumps({k: v["top1"] for k, v in r.items() if isinstance(v, dict) and "top1" in v}, indent=2))

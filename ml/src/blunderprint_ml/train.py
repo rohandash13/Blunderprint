@@ -58,6 +58,8 @@ def train(model_name, data_dir, out_path, epochs=5, batch=1024, lr=1e-3, seed=0,
     tr, va = _load(data_dir, "train", False, device), _load(data_dir, "val", True, device)
     config = _model_config(model_name, hidden, blocks, ch, head_ch)
     model = build_model(model_name, **config).to(device)
+    if device.type == "cuda" and model_name == "cnn":
+        model = model.to(memory_format=torch.channels_last)   # ~35% faster convs on Ampere
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     n = len(tr["y"])
     steps = epochs * ((n + batch - 1) // batch)
@@ -94,7 +96,7 @@ def train(model_name, data_dir, out_path, epochs=5, batch=1024, lr=1e-3, seed=0,
         if acc > best:
             best = acc
             os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-            state = {k: (v.half() if half_weights and v.is_floating_point() else v).cpu()
+            state = {k: (v.half() if half_weights and v.is_floating_point() else v).cpu().contiguous()
                      for k, v in model.state_dict().items()}
             torch.save({"model": model_name, "state_dict": state, "config": config,
                         "train_args": {"epochs": epochs, "batch": batch, "lr": lr, "seed": seed,

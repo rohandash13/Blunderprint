@@ -9,4 +9,5 @@ target/
 node_modules/
 checkpoints/*
 !checkpoints/mlp.pt
+!checkpoints/cnn.pt
 .env
