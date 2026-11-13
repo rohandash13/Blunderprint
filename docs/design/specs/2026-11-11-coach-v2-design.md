@@ -2,6 +2,7 @@
 
 **Date:** 2026-11-11
 **Status:** Approved design
+**Superseded in part:** difficulty levels (§1–2) are replaced by `2026-11-12-difficulty-v3-design.md`.
 **Builds on:** `2026-11-10-voice-coach-design.md`, `plans/2026-11-11-coach-mode.md`
 
 ## Problem

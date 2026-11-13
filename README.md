@@ -39,12 +39,16 @@ on their own positions.
   `get_hint`, `explain_line`, `try_move`, ...) compute verdicts, hints and engine lines in code and hand the
   agent facts to narrate. Hints follow a ladder (idea → piece → square); the answer is revealed only when the
   player asks.
-- **Difficulty levels.** Each mistake gets `p_best`: the model's probability that a player at that rating plays
-  the engine's move. The model's absolute probabilities are too low to read directly (it can't calculate tactics,
-  and the mistakes it flags are by construction ones where it expected the player's move), so levels use only the
-  *ordering* of `p_best` within the player's own repeatable mistakes: thirds of that ordering, slips (easiest third), tricky, deep (hardest
-  third). The coach defaults to tricky + deep, sorts examples by centipawn loss × (1 − `p_best`), and says "harder
-  than 80% of your mistakes" rather than a made-up find rate.
+- **Difficulty, measured by the engine and judged against the player's rating.** Mistakes are graded by the drop
+  in winning chances (the Lichess win-chance curve), so a quiet positional error counts and a 20-pawn swing in an
+  already-won game doesn't dominate. For each repeatable mistake, one MultiPV-2 Stockfish search records the
+  shallowest depth from which the engine stops changing its mind, whether the best move is the only good one, and
+  whether it simply wins free material. That gives an estimated rating at which players usually find the move;
+  levels compare it with the player's own rating (slip: they should see it; deep: a stretch). An earlier version
+  used the move model's probability here and rated a free-queen capture as "deep" (the model gave it 0.3%); the
+  engine trace puts it at about 900 Elo, a slip for a 2400 player. Each mistake belongs to one primary pattern,
+  including a new **positional** pattern; clock errors stay out of drills; and the coach describes difficulty in
+  words ("a quiet positional move, the kind that's hard to find even at your level"), never percentages.
 - **Line playout.** Every move the player suggests plays on the board, followed by up to 9 plies, ending with you to move, of the engine's
   best line (blue for the opponent, green for the player) and a plain-language eval ("Your opponent has a clear
   edge, about 2 pawns"). ◀ ▶ and the arrow keys step through it; so does saying "go back".
@@ -58,7 +62,7 @@ Every number below is produced by a script in this repo; the output files are in
 | Move prediction, top-1 on 50K held-out positions (player-disjoint split, 500K training positions) | **27.1%** MLP vs 21.1% linear vs 6.9% uniform | `cd ml && python -m blunderprint_ml.evaluate` → `results/model_eval.json` |
 | Analysis throughput, 30 games at depth 12 | **44 → 120 positions/sec** from 1 to 8 workers | `python scripts/loadtest.py` → `results/loadtest_batched.json` |
 | Batched DB writes | database share of worker time **26% → 9%** | `results/loadtest_timing.json` vs `results/loadtest_batched.json` |
-| Difficulty levels on a 2500-rated blitz player's 71 repeatable mistakes | hardest third averages **314 cp** lost vs 159 cp (middle) and 243 cp (easiest) | `curl -X POST localhost:8080/admin/players/Knight_ofthelight73/rescore`, then `python scripts/difficulty_report.py --username Knight_ofthelight73` → `results/difficulty_levels.json` |
+| Difficulty of a 2500-rated blitz player's 78 repeatable mistakes | **51%** slips, 36% tricky, 13% deep for that rating; **81%** have a quiet (positional) best move | `curl -X POST localhost:8080/admin/players/Knight_ofthelight73/rescore`, then `python scripts/difficulty_report.py --username Knight_ofthelight73` → `results/difficulty_levels.json` |
 
 ## Running locally
 

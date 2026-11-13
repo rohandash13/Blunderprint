@@ -1,52 +1,61 @@
 {
   "username": "Knight_ofthelight73",
-  "mistakes": 71,
-  "mistake_cpl": 100,
-  "min_p_played": 0.15,
+  "candidates": 78,
   "levels": {
     "slip": {
-      "count": 24,
-      "share": 0.338,
-      "avg_cpl": 243.1,
-      "by_tag": {
-        "other": 10,
-        "endgame_technique": 7,
-        "hanging_piece": 5,
-        "time_trouble": 3,
-        "missed_tactic": 2,
-        "opening_error": 1
+      "count": 40,
+      "share": 0.5128,
+      "avg_win_drop": 0.1523,
+      "by_kind": {
+        "positional": 31,
+        "tactical": 9
+      },
+      "by_pattern": {
+        "positional": 26,
+        "time_trouble": 6,
+        "other": 3,
+        "hanging_piece": 3,
+        "missed_tactic": 2
       }
     },
     "tricky": {
-      "count": 24,
-      "share": 0.338,
-      "avg_cpl": 159.2,
-      "by_tag": {
-        "other": 12,
-        "endgame_technique": 7,
-        "time_trouble": 3,
-        "opening_error": 2,
-        "hanging_piece": 2,
+      "count": 28,
+      "share": 0.359,
+      "avg_win_drop": 0.1286,
+      "by_kind": {
+        "positional": 26,
+        "tactical": 2
+      },
+      "by_pattern": {
+        "positional": 21,
+        "hanging_piece": 3,
+        "time_trouble": 2,
+        "other": 1,
         "missed_tactic": 1
       }
     },
     "deep": {
-      "count": 23,
-      "share": 0.3239,
-      "avg_cpl": 314.0,
-      "by_tag": {
-        "time_trouble": 8,
-        "hanging_piece": 7,
-        "other": 7,
-        "endgame_technique": 5,
-        "missed_tactic": 4
+      "count": 10,
+      "share": 0.1282,
+      "avg_win_drop": 0.1064,
+      "by_kind": {
+        "positional": 6,
+        "tactical": 4
+      },
+      "by_pattern": {
+        "positional": 6,
+        "time_trouble": 1,
+        "other": 1,
+        "missed_tactic": 1,
+        "opening_error": 1
       }
     },
     "unrated": {
       "count": 0,
       "share": 0.0,
-      "avg_cpl": null,
-      "by_tag": {}
+      "avg_win_drop": null,
+      "by_kind": {},
+      "by_pattern": {}
     }
   }
 }
