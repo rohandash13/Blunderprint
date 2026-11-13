@@ -4,6 +4,7 @@ import com.blunderprint.chess.GameReplayer;
 import com.blunderprint.chess.ReplayedMove;
 import com.blunderprint.lichess.LichessClient;
 import com.blunderprint.lichess.LichessGame;
+import com.blunderprint.lichess.LichessUserNotFoundException;
 import com.blunderprint.store.JobQueueRepository;
 import java.sql.Timestamp;
 import java.util.List;
@@ -32,7 +33,13 @@ public class IngestService {
 
     @Transactional
     public IngestResult ingest(String username, int maxGames, int depth) {
-        List<LichessGame> games = lichess.fetchGames(username, maxGames);
+        List<LichessGame> games;
+        try {
+            games = lichess.fetchGames(username, maxGames);
+        } catch (LichessUserNotFoundException e) {
+            throw new NoRatedGamesException(username);
+        }
+        if (games.isEmpty()) throw new NoRatedGamesException(username);
         UUID runId = UUID.randomUUID();
         jdbc.update("insert into analysis_run(id, username, engine, depth) values (?, ?, ?, ?)",
             runId, username, engine, depth);
@@ -59,6 +66,7 @@ public class IngestService {
                 moveCount++;
             }
         }
+        if (moveCount == 0) throw new NoRatedGamesException(username); // rolls the run back
         int jobs = queue.enqueueForRun(runId);
         return new IngestResult(runId, games.size(), moveCount, jobs);
     }

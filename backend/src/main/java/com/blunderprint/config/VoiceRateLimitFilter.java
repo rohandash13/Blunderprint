@@ -49,7 +49,7 @@ public class VoiceRateLimitFilter extends OncePerRequestFilter {
             chain.doFilter(req, res);
             return;
         }
-        if (!tryAcquire(clientIp(req))) {
+        if (!tryAcquire(ClientIp.of(req))) {
             res.setStatus(429);
             res.setContentType("application/json");
             res.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -72,14 +72,5 @@ public class VoiceRateLimitFilter extends OncePerRequestFilter {
 
     private static void evict(Deque<Long> d, long cutoff) {
         while (!d.isEmpty() && d.peekFirst() <= cutoff) d.removeFirst();
-    }
-
-    private static String clientIp(HttpServletRequest req) {
-        String xff = req.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            String[] hops = xff.split(",");
-            return hops[hops.length - 1].trim(); // the entry the platform proxy appended; earlier ones are client-supplied
-        }
-        return req.getRemoteAddr();
     }
 }

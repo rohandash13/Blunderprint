@@ -59,6 +59,7 @@ Steps live in a felt-green left rail; at 390 px the rail becomes a top bar. Step
 - `record`: `{white: {w, d, l}, black: {w, d, l}}` from `game.result` and the player's colour.
 - `phases`: candidate-mistake rate per 100 of the player's moves in opening (ply < 20, i.e. fullmove ≤ 10, the tagger's rule), middlegame and endgame
   (≤ 4 non-pawn non-king pieces, the tagger's rule).
+- `phaseMoves`: `{opening, middlegame, endgame}`, the player's move counts per phase (same phase rules), so the frontend can ignore phases with tiny samples.
 - `kinds`: `{positional, tactical}` counts over candidates.
 - `clock`: `{underThirtyShare, mistakeRateUnder30, mistakeRateOver30}`.
 - `grid`: up to the 40 most recent analyzed games, oldest to newest. Each entry is

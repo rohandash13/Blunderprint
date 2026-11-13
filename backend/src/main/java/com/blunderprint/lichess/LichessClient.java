@@ -60,6 +60,10 @@ public class LichessClient {
         try {
             HttpResponse<java.util.stream.Stream<String>> resp =
                 http.send(rb.build(), HttpResponse.BodyHandlers.ofLines());
+            if (resp.statusCode() == 404) {
+                resp.body().close();
+                throw new LichessUserNotFoundException(username);
+            }
             if (resp.statusCode() == 429) throw new IllegalStateException("Lichess rate limit (429): wait a minute");
             if (resp.statusCode() != 200) throw new IllegalStateException("Lichess HTTP " + resp.statusCode());
             List<LichessGame> games = new ArrayList<>();

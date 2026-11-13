@@ -117,6 +117,9 @@ class ProfileIT extends PostgresIT {
             .andExpect(jsonPath("$.phases.opening").value(50.0))
             .andExpect(jsonPath("$.phases.middlegame").value(25.0))
             .andExpect(jsonPath("$.phases.endgame").value(2 * 100.0 / 3))
+            .andExpect(jsonPath("$.phaseMoves.opening").value(2))
+            .andExpect(jsonPath("$.phaseMoves.middlegame").value(4))
+            .andExpect(jsonPath("$.phaseMoves.endgame").value(3))
             .andExpect(jsonPath("$.kinds.positional").value(1))
             .andExpect(jsonPath("$.kinds.tactical").value(3))
             // clock known on 8 moves; under 30s: plies 22 and 42 -> share 2/8

@@ -20,6 +20,7 @@ public class ProfileService {
     public record Wdl(int w, int d, int l) {}
     public record GameRecord(Wdl white, Wdl black) {}
     public record Phases(double opening, double middlegame, double endgame) {}
+    public record PhaseMoves(int opening, int middlegame, int endgame) {}
     public record Kinds(int positional, int tactical) {}
     public record Clock(double underThirtyShare, double mistakeRateUnder30, double mistakeRateOver30) {}
     public record Mark(int ply, String pattern, String level, String kind, double winDrop) {}
@@ -27,7 +28,7 @@ public class ProfileService {
     public record Levels(int slip, int tricky, int deep, int unrated) {}
     public record PatternStat(String tag, int count, Instant lastSeen, Levels levels, Kinds kinds) {}
     public record Profile(String username, Map<String, LichessClient.Perf> ratings, Analyzed analyzed,
-                          GameRecord record, Phases phases, Kinds kinds, Clock clock, List<GridGame> grid,
+                          GameRecord record, Phases phases, PhaseMoves phaseMoves, Kinds kinds, Clock clock, List<GridGame> grid,
                           List<PatternStat> patterns) {}
 
     private final JdbcTemplate jdbc;
@@ -164,6 +165,7 @@ public class ProfileService {
             new Analyzed(byGame.size(), rows.size(), from, to),
             new GameRecord(new Wdl(rec[0][0], rec[0][1], rec[0][2]), new Wdl(rec[1][0], rec[1][1], rec[1][2])),
             new Phases(per100(op[1], op[0]), per100(mid[1], mid[0]), per100(end[1], end[0])),
+            new PhaseMoves(op[0], mid[0], end[0]),
             new Kinds(positional, tactical),
             new Clock(clockKnown == 0 ? 0.0 : (double) under / clockKnown, per100(underCand, under),
                 per100(overCand, clockKnown - under)),

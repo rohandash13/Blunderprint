@@ -23,7 +23,7 @@ public class AnalysisService {
     private static final int MODEL_BATCH = 256;
     private static final int MAX_SCORING_ATTEMPTS = 3;
 
-    public record Progress(String status, long totalFens, long doneFens, long failedFens) {}
+    public record Progress(String status, long totalFens, long doneFens, long failedFens, int queuePosition) {}
 
     private record Scored(long moveId, String fen, Integer rating, String playedUci, String bestUci, String bestPv,
                           int cpl, double winDrop, Integer clockCs) {}
@@ -62,7 +62,8 @@ public class AnalysisService {
             left join eval_job j on j.fen_key = keys.k and j.engine = r.engine and j.depth = r.depth
             """, runId, runId, runId);
         return new Progress(status, ((Number) row.get("total")).longValue(),
-            ((Number) row.get("done")).longValue(), ((Number) row.get("failed")).longValue());
+            ((Number) row.get("done")).longValue(), ((Number) row.get("failed")).longValue(),
+            AnalysisGate.queuePosition(jdbc, runId));
     }
 
     @Scheduled(fixedDelay = 2000)
