@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from blunderprint_ml.encoding import move_index
 from blunderprint_ml.inference import legal_distribution, p_played, p_played_batch
-from blunderprint_ml.models import MLP
+from blunderprint_ml.models import MLP, ResCNN
 
 
 def _model():
@@ -13,10 +13,13 @@ def _model():
     return MLP(hidden=32).eval()
 
 
-@pytest.fixture
-def client(tmp_path, monkeypatch):
+@pytest.fixture(params=["mlp", "cnn"])
+def client(tmp_path, monkeypatch, request):
     ck = tmp_path / "m.pt"
-    torch.save({"model": "mlp", "state_dict": _model().state_dict(), "config": {"hidden": 32}}, ck)
+    name = request.param
+    config = {"hidden": 32} if name == "mlp" else {"blocks": 1, "ch": 8, "head_ch": 4}
+    model = _model() if name == "mlp" else ResCNN(**config).eval()
+    torch.save({"model": name, "state_dict": model.state_dict(), "config": config}, ck)
     monkeypatch.setenv("MODEL_CKPT", str(ck))
     from blunderprint_ml import service
     with TestClient(service.create_app()) as c:

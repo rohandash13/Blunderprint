@@ -42,7 +42,7 @@ The visual system and responsive behavior are documented in [DESIGN.md](DESIGN.m
   Postgres queue (`FOR UPDATE SKIP LOCKED`). A pool of Stockfish workers drains it and writes to a shared
   `eval_cache` keyed by position, engine version, depth and MultiPV, so repeated positions are never re-analyzed.
   Centipawn loss is computed per move once all evaluations are in.
-- **Move model (Python).** A rating-conditioned MLP (772 board features + rating embedding → 4096 from-to moves)
+- **Move model (Python).** A rating-conditioned residual CNN (board planes + rating embedding → from-to moves)
   predicts what a player at a given rating would play. A mistake the model rates as *likely* for the player's
   rating is a habit worth drilling, not a one-off.
 - **Voice coach (React + Deepgram).** The browser talks to Deepgram's Voice Agent API directly with a short-lived
@@ -70,7 +70,7 @@ Every number below is produced by a script in this repo; the output files are in
 
 | What | Result | Reproduce |
 |------|--------|-----------|
-| Move prediction, top-1 on 50K held-out positions (player-disjoint split, 500K training positions) | **27.1%** MLP vs 21.1% linear vs 6.9% uniform | `cd ml && python -m blunderprint_ml.evaluate` → `results/model_eval.json` |
+| Move prediction, masked top-1 on 50K held-out positions from 2026-10 (player-disjoint split, 5M training positions) | **43.85% CNN** vs 35.21% retrained MLP vs 26.28% deployed MLP vs 6.78% uniform; CNN wins every rating bucket | `cd ml && python -m blunderprint_ml.evaluate --data data/lichess_2026-10 --ckpt mlp_2016=checkpoints/mlp.pt --ckpt mlp_2026=checkpoints/mlp_2026.pt --ckpt cnn=checkpoints/cnn.pt` → `results/model_eval.json`; rebuild/training commands in [ml/EXPERIMENT.md](ml/EXPERIMENT.md) |
 | Analysis throughput, 30 games at depth 12 | **44 → 120 positions/sec** from 1 to 8 workers | `python scripts/loadtest.py` → `results/loadtest_batched.json` |
 | Batched DB writes | database share of worker time **26% → 9%** | `results/loadtest_timing.json` vs `results/loadtest_batched.json` |
 | Difficulty of a 2400+-rated blitz player's 77 repeatable mistakes | of the 63 the engine trace could rate: **56%** slips, 30% tricky, 14% deep for that rating; **75%** of all 77 have a quiet, non-tactical best move | `curl -X POST localhost:8080/admin/players/Knight_ofthelight73/rescore`, then `python scripts/difficulty_report.py --username Knight_ofthelight73` → `results/difficulty_levels.json` |
@@ -91,7 +91,7 @@ cp .env.example .env   # then set DEEPGRAM_API_KEY
 Model service (port 8000):
 
 ```bash
-cd ml && pip install -e ".[dev,train]" && MODEL_CKPT=checkpoints/mlp.pt uvicorn blunderprint_ml.service:app --port 8000
+cd ml && pip install -e ".[dev,train]" && MODEL_CKPT=checkpoints/cnn.pt uvicorn blunderprint_ml.service:app --port 8000
 ```
 
 Backend (port 8080):

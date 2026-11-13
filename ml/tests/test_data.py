@@ -5,7 +5,7 @@ import chess
 import chess.pgn
 import numpy as np
 
-from blunderprint_ml.data import build, game_split, split_of
+from blunderprint_ml.data import LICHESS_URL, build, game_split, load_X, source_of, split_of
 
 
 def _names_in(split: str, n: int) -> list[str]:
@@ -18,13 +18,13 @@ def _names_in(split: str, n: int) -> list[str]:
     return out
 
 
-def _write_games(path, white, black, n_games, seed=0):
+def _write_games(path, white, black, n_games, seed=0, elo=("1500", "1480")):
     rng = random.Random(seed)
     with open(path, "w") as f:
         for _ in range(n_games):
             board = chess.Board()
             game = chess.pgn.Game()
-            game.headers.update({"White": white, "Black": black, "WhiteElo": "1500", "BlackElo": "1480",
+            game.headers.update({"White": white, "Black": black, "WhiteElo": elo[0], "BlackElo": elo[1],
                                  "TimeControl": "300+0", "Result": "1/2-1/2"})
             node = game
             for _ in range(60):
@@ -65,7 +65,8 @@ def test_build_writes_arrays_and_respects_split(tmp_path):
 
     meta = json.loads((out / "meta.json").read_text())
     assert meta["counts"]["train"] > 0 and meta["counts"]["test"] > 0 and meta["counts"]["val"] == 0
-    X = np.load(out / "X_train.npy")
+    X = load_X(str(out), "train")
+    assert np.load(out / "Xb_train.npy").shape == (meta["counts"]["train"], 97)
     y = np.load(out / "y_train.npy")
     assert X.shape == (meta["counts"]["train"], 772)
     assert y.min() >= 0 and y.max() < 4096
@@ -96,4 +97,38 @@ def test_build_drops_games_between_players_in_different_splits(tmp_path):
     a = json.loads((tmp_path / "a" / "meta.json").read_text())["counts"]
     b = json.loads((tmp_path / "b" / "meta.json").read_text())["counts"]
     assert a == b and b["test"] == 0
-    assert np.array_equal(np.load(tmp_path / "a" / "X_train.npy"), np.load(tmp_path / "b" / "X_train.npy"))
+    assert np.array_equal(load_X(str(tmp_path / "a"), "train"), load_X(str(tmp_path / "b"), "train"))
+
+
+def test_month_argument_maps_to_lichess_url():
+    assert source_of("2026-10") == LICHESS_URL.format(month="2026-10")
+    assert source_of("data/x.pgn.zst") == "data/x.pgn.zst"
+
+
+def test_output_is_identical_for_any_worker_count(tmp_path):
+    tr = _names_in("train", 2)
+    te = _names_in("test", 2)
+    pgn = tmp_path / "all.pgn"
+    _write_games(tmp_path / "a.pgn", tr[0], tr[1], 8, seed=5)
+    _write_games(tmp_path / "b.pgn", te[0], te[1], 8, seed=6)
+    pgn.write_text((tmp_path / "a.pgn").read_text() + (tmp_path / "b.pgn").read_text())
+    caps = {"train": 150, "val": 10, "test": 60}
+    build(str(pgn), str(tmp_path / "w0"), caps=caps, workers=0)
+    build(str(pgn), str(tmp_path / "w2"), caps=caps, workers=2)
+    for name in ("Xb_train", "y_train", "Xb_test", "y_test", "L_test", "rb_test"):
+        assert np.array_equal(np.load(tmp_path / "w0" / f"{name}.npy"), np.load(tmp_path / "w2" / f"{name}.npy"))
+
+
+def test_high_elo_boost_samples_more_strong_mover_positions(tmp_path):
+    tr = _names_in("train", 2)
+    pgn = tmp_path / "g.pgn"
+    _write_games(pgn, tr[0], tr[1], 10, seed=7, elo=("2400", "1500"))
+    caps = {"train": 10_000, "val": 10, "test": 10}
+    build(str(pgn), str(tmp_path / "plain"), caps=caps, sample_prob=0.3)
+    build(str(pgn), str(tmp_path / "boost"), caps=caps, sample_prob=0.3, high_elo_boost=3.0)
+    strong = lambda d: int((np.load(tmp_path / d / "rb_train.npy") >= 7).sum())
+    weak = lambda d: int((np.load(tmp_path / d / "rb_train.npy") < 7).sum())
+    assert strong("boost") > 2 * strong("plain")
+    assert weak("boost") == weak("plain")
+    meta = json.loads((tmp_path / "boost" / "meta.json").read_text())
+    assert meta["high_elo_boost"] == 3.0 and meta["month"] is None
