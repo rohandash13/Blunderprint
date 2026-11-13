@@ -80,7 +80,7 @@ export function BlunderprintGrid({ profile, levels, onLevels, onOpen, opening, e
             )}
           </p>
         </div>
-        <LevelControl levels={levels} onChange={onLevels} counts={all.levelCounts} />
+        <LevelControl levels={levels} onChange={onLevels} counts={all.levelCounts} scope={`Counts in your last ${games.length} games`} />
       </div>
 
       {range && (

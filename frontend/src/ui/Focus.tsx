@@ -31,7 +31,7 @@ export function Focus({ profile, report, reportError, levels, onLevels, onDrill,
           <h1>Choose a focus</h1>
           <p className="lede">Pick a pattern to drill. Each position comes from one of your games, with your move hidden.</p>
         </div>
-        <LevelControl levels={levels} onChange={onLevels} counts={levelCounts} />
+        <LevelControl levels={levels} onChange={onLevels} counts={levelCounts} scope={`Counts across all ${profile.analyzed.games} analyzed games`} />
       </header>
 
       {reportError && (
@@ -47,8 +47,17 @@ export function Focus({ profile, report, reportError, levels, onLevels, onDrill,
           {patterns.map((p) => {
             const label = patternLabel(p.tag);
             const examples = report?.patterns.find((r) => r.tag === p.tag)?.examples.length ?? 0;
+            // Clock-pressure mistakes are about time, not the position: never drilled, only shown.
+            const clock = p.tag === "time_trouble";
             const ready = !!report && examples > 0;
-            const why = !report ? "Loading positions" : "No positions at this difficulty";
+            const canDrill = ready && !clock;
+            const why = !report
+              ? "Loading positions"
+              : clock
+                ? ready
+                  ? "Clock mistakes aren't drilled: they're about time, not the position."
+                  : "Clock mistakes aren't drilled: they're about time, not the position. Turn on Slips to review them."
+                : "No positions at this difficulty";
             const isWorst = p.tag === worst;
             return (
               <li key={p.tag} className={`panel plate${isWorst ? " is-worst" : ""}${p.tag === "other" ? " is-muted" : ""}`}>
@@ -92,14 +101,14 @@ export function Focus({ profile, report, reportError, levels, onLevels, onDrill,
                   </div>
                 </dl>
                 <div className="plate-actions">
-                  <button type="button" className="btn btn-primary" disabled={!ready || busy} title={ready ? undefined : why} onClick={() => onDrill(p.tag)}>
+                  <button type="button" className="btn btn-primary" disabled={!canDrill || busy} title={canDrill ? undefined : why} onClick={() => onDrill(p.tag)}>
                     Drill
                   </button>
                   <button type="button" className="btn" disabled={!ready || busy} title={ready ? "See your game move and the stronger one" : why} onClick={() => onShow(p.tag)}>
                     Show
                   </button>
-                  {report && !ready && <span className="plate-why">{why}</span>}
                 </div>
+                {report && !canDrill && <p className="plate-why">{why}</p>}
               </li>
             );
           })}

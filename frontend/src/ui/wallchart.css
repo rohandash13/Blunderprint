@@ -312,6 +312,17 @@ input {
   flex-wrap: wrap;
 }
 
+/* a full-width line under the control that adds nothing to its width */
+.levels-scope {
+  flex-basis: 100%;
+  width: 0;
+  min-width: 100%;
+  color: var(--mute);
+  font-size: var(--fs-small);
+  line-height: 16px;
+  text-align: right;
+}
+
 .levels-label {
   font-size: var(--fs-small);
   font-weight: 700;
@@ -971,16 +982,16 @@ input {
   gap: var(--s4);
 }
 
-/* every line in the side cards is one cell tall, so each card is whole cells */
+/* text keeps a normal line-height; the card's height is rounded up to whole cells in script (useSnapHeight) */
 .side-card,
 .start-card {
   padding: var(--s4);
-  line-height: var(--cell);
+  line-height: 1.45;
 }
 
 .side-card h2,
 .start-card h2 {
-  margin: 0;
+  margin: 0 0 4px;
   line-height: var(--cell);
 }
 
@@ -992,7 +1003,7 @@ input {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 12px 0;
+  padding: 10px 0;
   box-shadow: inset 0 1px 0 var(--line);
   font-weight: 600;
 }
@@ -1004,14 +1015,15 @@ input {
 
 .insight-text {
   font-weight: 700;
-  line-height: var(--cell);
+  line-height: 20px;
 }
 
 .insight-note {
+  margin-top: 2px;
   color: var(--mute);
   font-size: 13px;
   font-weight: 500;
-  line-height: var(--cell);
+  line-height: 18px;
 }
 
 .insight-note:empty {
@@ -1020,6 +1032,10 @@ input {
 
 .insight:first-child {
   box-shadow: none;
+}
+
+.insight:last-child {
+  padding-bottom: 0;
 }
 
 .insight i {
@@ -1093,8 +1109,14 @@ input {
 }
 
 .start-card .plate-note {
-  margin: 0;
-  line-height: var(--cell);
+  margin: 4px 0 0;
+  line-height: 20px;
+}
+
+.start-card .plate-figures {
+  margin: var(--s3) 0;
+  row-gap: var(--s2);
+  line-height: 20px;
 }
 
 .start-card .btn-block {
@@ -1102,8 +1124,8 @@ input {
 }
 
 .start-card .form-note {
-  margin-top: 0;
-  line-height: var(--cell);
+  margin-top: var(--s2);
+  line-height: 20px;
 }
 
 /* ---------- the Blunderprint grid ---------- */
@@ -1618,9 +1640,12 @@ input {
   margin-top: auto;
 }
 
+/* one cell per line, so the plate stays whole cells tall */
 .plate-why {
+  margin: 0;
   color: var(--mute);
   font-size: 13px;
+  line-height: var(--cell);
 }
 
 /* ---------- drill ---------- */
@@ -2015,9 +2040,10 @@ input {
     padding: 0;
   }
 
+  /* a narrow name plate (names wrap to two lines) leaves room for a dozen games */
   .bp-grid {
-    --name-w: 144px;
-    --count-w: 48px;
+    --name-w: 96px;
+    --count-w: 36px;
     --game-w: 18px;
   }
 
@@ -2032,16 +2058,23 @@ input {
 
   .td-name,
   .th-name {
-    padding-left: 12px !important;
+    padding-left: 8px !important;
+    padding-right: 4px !important;
+  }
+
+  .th-name,
+  .th-count {
+    letter-spacing: 0.02em;
   }
 
   .bp-grid tbody .td-name {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .bp-grid tbody .plate-n {
     white-space: normal;
-    line-height: 16px;
+    hyphens: auto;
+    line-height: 15px;
   }
 
   /* no room for the note on a phone; the name's title still carries it */
@@ -2055,8 +2088,17 @@ input {
     padding-right: var(--s3);
   }
 
+  /* an explicit width keeps the fixed table layout, so the columns get exactly these widths */
   .grid-sheet .bp-grid {
-    width: auto;
+    width: calc(var(--name-w) + var(--count-w) + var(--cols) * var(--game-w));
+    min-width: 0;
+  }
+
+  .bp-grid thead .th-count {
+    padding-right: 4px !important;
+    overflow: visible;
+    font-size: 11px;
+    letter-spacing: 0;
   }
 
   /* phone: strengths, leaks and the start card come before the long grid */

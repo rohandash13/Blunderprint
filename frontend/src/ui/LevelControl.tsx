@@ -14,10 +14,12 @@ interface Props {
   /** Marks per level, shown beside each name. */
   counts?: Partial<Record<Level, number>>;
   compact?: boolean;
+  /** What the counts cover, e.g. "in your last 40 games". */
+  scope?: string;
 }
 
 /** Slips | Tricky | Deep: a multi-select segmented control; at least one level stays on. */
-export function LevelControl({ levels, onChange, counts, compact }: Props) {
+export function LevelControl({ levels, onChange, counts, compact, scope }: Props) {
   const toggle = (l: PickLevel) => {
     const on = levels.includes(l);
     if (on && levels.length === 1) return;
@@ -41,6 +43,7 @@ export function LevelControl({ levels, onChange, counts, compact }: Props) {
           );
         })}
       </div>
+      {counts && scope && <span className="levels-scope">{scope}</span>}
     </div>
   );
 }

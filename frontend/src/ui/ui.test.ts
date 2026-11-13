@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildGrid, describeMark, markSize, markVisible, moveNumberOf, resultMark } from "./gridLayout";
 import { dateRange, describeEta, estimateRemaining, formatDate, ratingChips, shortDate, signed } from "./format";
 import { describeResult } from "./coachText";
+import { roundUpToCell } from "./useSnapHeight";
 import type { GridGame, GridMark, Profile } from "../profile/types";
 
 const mark = (pattern: string, level: GridMark["level"], winDrop = 0.12, ply = 30): GridMark => ({ ply, pattern, level, kind: "tactical", winDrop });
@@ -147,5 +148,11 @@ describe("describeResult", () => {
     expect(describeResult("start_drill", { status: "Position ready, White to move", difficultyNote: "a tactic a few moves deep" })).toBe("Position ready, White to move.");
     expect(describeResult("step_line", { ply: 1, total: 2 })).toBeNull();
     expect(describeResult("x", null)).toBeNull();
+  });
+});
+
+describe("roundUpToCell", () => {
+  it("rounds a height up to whole cells, tolerating sub-pixel noise", () => {
+    expect([roundUpToCell(0), roundUpToCell(1), roundUpToCell(24), roundUpToCell(24.004), roundUpToCell(131.5), roundUpToCell(144)]).toEqual([0, 24, 24, 24, 144, 144]);
   });
 });

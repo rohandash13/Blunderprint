@@ -7,6 +7,7 @@ import type { Level, Report } from "../types";
 import { BlunderprintGrid } from "./BlunderprintGrid";
 import { dateRange, fmtInt, formatDate, ratingChips, signed } from "./format";
 import { ExternalIcon } from "./Icons";
+import { useSnapHeight } from "./useSnapHeight";
 
 interface Props {
   profile: ProfileData;
@@ -27,6 +28,9 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
   const insights = useMemo(() => profileInsights(profile), [profile]);
   const start = useMemo(() => recommendedPattern(profile), [profile]);
   const strengths = insights.strengths;
+  const strengthsRef = useSnapHeight<HTMLElement>();
+  const leaksRef = useSnapHeight<HTMLElement>();
+  const startRef = useSnapHeight<HTMLElement>();
   const leaks = leaksBeside(insights, start?.tag ?? null);
   const chips = ratingChips(profile.ratings);
   const range = dateRange(profile.analyzed.from, profile.analyzed.to);
@@ -112,7 +116,8 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
       </div>
 
       <aside className="profile-side" aria-label="Strengths, leaks and where to start">
-        <section className="panel side-card" aria-labelledby="strengths-title">
+        <section className="panel side-card" aria-labelledby="strengths-title" ref={strengthsRef}>
+          <div className="snap-inner">
           <h2 id="strengths-title">Strengths</h2>
           {strengths.length ? (
             <ul className="insights">
@@ -129,9 +134,11 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
           ) : (
             <p className="empty">Not enough evidence for a clear strength yet.</p>
           )}
+          </div>
         </section>
 
-        <section className="panel side-card" aria-labelledby="leaks-title">
+        <section className="panel side-card" aria-labelledby="leaks-title" ref={leaksRef}>
+          <div className="snap-inner">
           <h2 id="leaks-title">Leaks</h2>
           {leaks.length ? (
             <ul className="insights">
@@ -148,10 +155,12 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
           ) : (
             <p className="empty">No repeating leak stands out.</p>
           )}
+          </div>
         </section>
 
         {start && startLabel && (
-          <section className="panel start-card" aria-labelledby="start-title">
+          <section className="panel start-card" aria-labelledby="start-title" ref={startRef}>
+          <div className="snap-inner">
             <h2 id="start-title" className="start-title">
               Start with <span className="hl-stroke">{startLabel.name.toLowerCase()}</span>
             </h2>
@@ -162,7 +171,7 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
                 <dd className="num">{start.count}</dd>
               </div>
               <div>
-                <dt title="Marks at the difficulty you picked">Shown</dt>
+                <dt title="Marks at the difficulty you picked">At your levels</dt>
                 <dd className="num">{atLevels}</dd>
               </div>
               <div>
@@ -177,7 +186,8 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
               <p className="form-note">{report ? "No positions at this difficulty. Turn on another level." : "Loading positions…"}</p>
             )}
             {drillable && mainLevel && <p className="form-note">Mostly {LEVEL_WORD[mainLevel]} at the difficulty you picked.</p>}
-          </section>
+            </div>
+        </section>
         )}
       </aside>
     </div>
