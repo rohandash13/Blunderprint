@@ -29,6 +29,8 @@ describe("buildSettings", () => {
     expect(s.agent.think.prompt).toContain("difficultyNote");
     expect(s.agent.think.prompt).toContain("never percentages or ratings");
     expect(s.agent.think.prompt).toContain("alternate positional and tactical");
+    expect(s.agent.think.prompt).toContain("Only drill or show patterns where drillable is true");
+    expect(s.agent.think.prompt).toContain("a time-trouble pattern is about the clock");
     expect(typeof s.agent.greeting).toBe("string");
   });
 

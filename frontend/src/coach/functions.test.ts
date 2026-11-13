@@ -86,8 +86,10 @@ describe("report and show_mistake", () => {
       level: "tricky",
       kind: "tactical",
       difficultyNote: "a tactic a few moves deep",
+      drillable: true,
     });
     expect(r.patterns[1].named).toBe(false);
+    expect(r.patterns[1].drillable).toBe(false);          // no examples at these levels: talk about it, don't drill
     expect(r.patterns[1].description).toContain("Uncategorized mistakes");
     expect(r.movesAnalyzed).toBe(400);
   });

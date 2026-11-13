@@ -274,6 +274,7 @@ export async function handleFunctionCall(
         count: p.count,
         avgCpl: Math.round(p.avgCpl),
         examples: p.examples.length,
+        drillable: p.examples.length > 0,
         level: p.examples[0]?.level ?? null,
         kind: p.examples[0]?.kind ?? null,
         difficultyNote: p.examples[0] ? difficultyNote(p.examples[0].level, p.examples[0].kind) : null,

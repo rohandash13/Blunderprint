@@ -422,8 +422,8 @@ export default function App() {
                         </td>
                         <td>{p.examples.length}</td>
                         <td>
-                          <button onClick={() => { coach.current.drill = null; void handleFunctionCall("show_mistake", { tag: p.tag, index: 0 }, coach.current, effects); }}>Show</button>{" "}
-                          <button onClick={() => void handleFunctionCall("start_drill", { tag: p.tag }, coach.current, effects)}>Drill</button>
+                          <button disabled={p.examples.length === 0} title={p.examples.length === 0 ? "No positions at these levels" : undefined} onClick={() => { coach.current.drill = null; void handleFunctionCall("show_mistake", { tag: p.tag, index: 0 }, coach.current, effects); }}>Show</button>{" "}
+                          <button disabled={p.examples.length === 0} title={p.examples.length === 0 ? "No positions at these levels" : undefined} onClick={() => void handleFunctionCall("start_drill", { tag: p.tag }, coach.current, effects)}>Drill</button>
                         </td>
                       </tr>
                     );
