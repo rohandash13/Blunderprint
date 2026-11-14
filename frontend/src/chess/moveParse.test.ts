@@ -14,6 +14,11 @@ describe("tokenize", () => {
 });
 
 describe("parseMove", () => {
+  it("accepts Qc2 and its voice transcript in the reported move-12 position", () => {
+    const fen = "r4rk1/pp1b2pp/2pbpq2/3p1p2/2PPn3/1P1BP3/PB1N1PPP/R2Q1RK1 w - - 0 12";
+    for (const move of ["Qc2", "Queen c two", "Queen see two", "Queen to c2", "I play queen c two"])
+      expect(parseMove(fen, move)?.san).toBe("Qc2");
+  });
   it("accepts SAN and UCI directly", () => {
     expect(parseMove(START, "e4")?.san).toBe("e4");
     expect(parseMove(START, "Nf3")?.san).toBe("Nf3");

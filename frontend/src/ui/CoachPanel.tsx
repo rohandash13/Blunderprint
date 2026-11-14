@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { Transcript } from "./Transcript";
 import { difficultyNote } from "../coach/difficultyNote";
 import { LevelControl } from "./LevelControl";
 import type { Coach } from "./useCoach";
@@ -11,6 +12,8 @@ interface Props {
 }
 
 function promptFor(coach: Coach): { head: string; body: string } {
+  if (coach.checkingMove)
+    return { head: "Checking the continuation…", body: "Your move is on the board. The coach is checking what follows." };
   const d = coach.drill;
   if (!d) {
     return {
@@ -23,7 +26,11 @@ function promptFor(coach: Coach): { head: string; body: string } {
   }
   const side = d.example.fen.split(" ")[1] === "w" ? "White" : "Black";
   if (d.solved) return { head: "Solved", body: "Step through the line with Next, try other moves, or go on to the next position." };
-  if (d.revealed) return { head: "Answer shown", body: "Green is the best move, red is your game move. Try the line yourself, or go on to the next position." };
+  if (d.revealed)
+    return {
+      head: "Answer shown",
+      body: "Green is the best move, red is your game move. Try the line yourself, or go on to the next position.",
+    };
   const note = difficultyNote(d.example.level, d.example.kind);
   return {
     head: `${side} to move. What would you play?`,
@@ -32,18 +39,13 @@ function promptFor(coach: Coach): { head: string; body: string } {
 }
 
 export function CoachPanel({ coach, onChoose, onLevels }: Props) {
-  const { drill, lines, status, levels, busy, actions } = coach;
+  const { drill, lines, status, levels, actions } = coach;
+  const busy=coach.busy||coach.checkingMove;
   const [move, setMove] = useState("");
-  const logRef = useRef<HTMLOListElement>(null);
   const live = status === "live";
   const prompt = promptFor(coach);
   const hintsLeft = drill ? 3 - drill.hintsGiven : 0;
   const open = !!drill && !drill.solved && !drill.revealed;
-
-  useEffect(() => {
-    const el = logRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [lines.length]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -90,17 +92,14 @@ export function CoachPanel({ coach, onChoose, onLevels }: Props) {
       <div className="transcript-wrap">
         <h3 className="transcript-title">{live ? "Conversation" : "Coach notes"}</h3>
         {/* The one live region for coach text: typed-mode notes (captions included) and the voice conversation. */}
-        <ol className="transcript" ref={logRef} aria-live="polite" aria-label="Transcript">
-          {lines.length === 0 && (
-            <li className="transcript-empty">{live ? "Say hello, or ask what to work on." : "Moves you try, hints and answers appear here. Start voice in the rail to talk instead."}</li>
-          )}
-          {lines.map((l) => (
-            <li key={l.id} className={`line line-${l.role}`}>
-              <span className="line-who">{l.role === "user" ? "You" : "Coach"}</span>
-              <span className="line-text">{l.content}</span>
-            </li>
-          ))}
-        </ol>
+        <Transcript
+          lines={lines}
+          empty={
+            live
+              ? "Say hello, or ask what to work on."
+              : "Moves you try, hints and answers appear here. Start voice in the rail to talk instead."
+          }
+        />
       </div>
 
       <form className="move-form" onSubmit={submit}>
@@ -115,9 +114,9 @@ export function CoachPanel({ coach, onChoose, onLevels }: Props) {
           placeholder={drill ? "Type a move, e.g. Nf3 or knight f3" : "Open a drill to type moves"}
           autoComplete="off"
           spellCheck={false}
-          disabled={!drill}
+          disabled={!drill || busy}
         />
-        <button type="submit" className="btn btn-primary" disabled={!drill || !move.trim()}>
+        <button type="submit" className="btn btn-primary" disabled={!drill || busy || !move.trim()}>
           Play
         </button>
       </form>

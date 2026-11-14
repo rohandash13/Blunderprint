@@ -33,8 +33,8 @@ drill for a 1200.
   already-analyzed players load instantly.
 - Session flow: player profile summary (text; spoken when voice is on) → choose a pattern or difficulty → drills
   on a board with hints, line playout, and per-move explanation.
-- Voice: Deepgram Voice Agent in the browser (Chrome, microphone, headphones recommended); everything also works
-  by typing moves and clicking.
+- Voice: Deepgram Voice Agent in the browser (Chrome, microphone, headphones recommended); a visible conversation panel opens before the board, and everything also works
+  by dragging pieces, typing moves and clicking.
 - Desktop first (board + coach side by side); must remain usable on a phone.
 
 ## Capabilities and Constraints
@@ -49,7 +49,7 @@ drill for a 1200.
 - Public demo limits: analysis of ~40 recent games per username, one at a time, daily cap; voice tokens
   rate-limited; admin endpoints closed.
 - Terminology: "slip / tricky / deep" for difficulty; "patterns" for recurring mistake types; "drill" for
-  practicing a position.
+  practicing a position; "strengths / weaknesses" in the player profile.
 
 ## Brand Commitments
 

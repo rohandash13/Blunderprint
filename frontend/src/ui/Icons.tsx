@@ -2,7 +2,21 @@ import type { SVGProps } from "react";
 
 /** One authored set: 20px box, 1.75 stroke, round caps. */
 function Icon(props: SVGProps<SVGSVGElement>) {
-  return <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" {...props} />;
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+      {...props}
+    />
+  );
 }
 
 export const ChevronLeft = (p: SVGProps<SVGSVGElement>) => (
@@ -27,6 +41,13 @@ export const MicIcon = (p: SVGProps<SVGSVGElement>) => (
 export const StopIcon = (p: SVGProps<SVGSVGElement>) => (
   <Icon {...p}>
     <rect x="5" y="5" width="10" height="10" rx="1.5" />
+  </Icon>
+);
+
+export const ConversationIcon = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path d="M4 3.5h12a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H9l-4.5 3v-3H4A1.5 1.5 0 0 1 2.5 13V5A1.5 1.5 0 0 1 4 3.5Z" />
+    <path d="M6 7.5h8M6 10.5h5" />
   </Icon>
 );
 

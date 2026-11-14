@@ -3,6 +3,11 @@ import { DEFAULT_CONFIG, KEYTERMS, buildSettings } from "./settings";
 
 describe("buildSettings", () => {
   const s = buildSettings(DEFAULT_CONFIG, "alice") as any;
+  it("leaves legality to code and narrates verified UI moves without replaying them",()=>{
+    expect(s.agent.think.prompt).toContain("Never reject a move without calling play_move");
+    expect(s.agent.think.prompt).toContain("Verified move result");
+    expect(s.agent.think.prompt).toContain("weaknesses");
+  });
 
   it("uses linear16 at 24 kHz both ways", () => {
     expect(s.type).toBe("Settings");

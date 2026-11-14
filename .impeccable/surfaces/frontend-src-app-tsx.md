@@ -25,14 +25,14 @@ UI face; every number in tabular figures at one size, rank by weight and case (T
 controls only: buttons, segmented control, tabs, inputs.
 
 STORY: Enter a username; see the analysis progress if needed; land on the Profile: ratings, a short written (or
-spoken) summary, strengths and leaks, and the Blunderprint grid. Choose a pattern or difficulty; drill on the
+spoken) summary, strengths and weaknesses, and the Blunderprint grid. Choose a pattern or difficulty; drill on the
 board with the coach; each line plays one move at a time with an arrow and a sentence.
 
 FIRST VIEWPORT: Left rail 220 px felt green: wordmark, 3-step stepper (Profile · Choose focus · Drill), voice toggle
 and Start voice at its foot. Main: player header (name, Lichess, rating chips with recent trend, games analyzed),
 the summary paragraph, then the Blunderprint grid panel (pattern name plates with counts as rows, recent games as
 columns with a colour dot, marker dots sized by cost and coloured by level, worst row highlighted) under a
-Slips | Tricky | Deep segmented control. Right column: strengths, leaks, and a "Start with this" card with the
+Slips | Tricky | Deep segmented control. Right column: strengths, weaknesses, and a "Start with this" card with the
 primary action "Drill this pattern".
 
 FORM: Club Wallchart, position 3 of 7 on the ordered list. seed:288c1c7188bb3feb. Raises: Crouwel (visible grid as

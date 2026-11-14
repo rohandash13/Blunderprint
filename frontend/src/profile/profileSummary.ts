@@ -46,7 +46,7 @@ export function profileSummaryParts(profile: Profile): SummaryParts {
 
   const name = patternLabel(top.tag).name.toLowerCase();
   const evidence = EVIDENCE[top.tag];
-  const lead = "Your recurring leak is ";
+  const lead = "Your recurring weakness is ";
   const rest: string[] = [];
   rest.push(evidence ? `: in ${fmt(top.count)} of the ${fmt(total)} mistakes I found, ${evidence}.` : `: ${fmt(top.count)} of the ${fmt(total)} mistakes I found.`);
 

@@ -12,6 +12,7 @@ import { Rail } from "./ui/Rail";
 import { useAnalysis, messageFor } from "./ui/useAnalysis";
 import { useCoach } from "./ui/useCoach";
 import { loadClockExamples } from "./ui/clockExamples";
+import { Conversation } from "./ui/Conversation";
 
 export default function App() {
   const [flow, dispatch] = useReducer(flowReducer, initialFlow);
@@ -20,7 +21,8 @@ export default function App() {
   const [opening, setOpening] = useState<string | null>(null);
   const [markError, setMarkError] = useState<string | null>(null);
   const [lastName, setLastName] = useState("");
-  const username = flow.unlocked.profile ? flow.username ?? "" : "";
+  const [conversationOpen, setConversationOpen] = useState(false);
+  const username = flow.unlocked.profile ? (flow.username ?? "") : "";
 
   const coach = useCoach(username, { onBoard: () => dispatch({ type: "openPosition" }) });
   const analysis = useAnalysis(flow, dispatch);
@@ -73,6 +75,7 @@ export default function App() {
     dispatch({ type: "submit", username: name });
   };
   const restart = () => {
+    setConversationOpen(false);
     coach.actions.stopVoice();
     dispatch({ type: "restart" });
   };
@@ -116,7 +119,7 @@ export default function App() {
 
   const changeLevels = async (lv: Parameters<typeof coach.actions.changeLevels>[0]) => {
     // Only a running drill restarts at the new levels; an example being shown just clears.
-    const tag = flow.step === "drill" ? coach.drill?.tag ?? null : null;
+    const tag = flow.step === "drill" ? (coach.drill?.tag ?? null) : null;
     await coach.actions.changeLevels(lv);
     if (tag) await coach.actions.startDrill(tag); // stay on the pattern at the new difficulty
   };
@@ -192,14 +195,29 @@ export default function App() {
           status: coach.status,
           error: coach.voiceError,
           canExport: coach.canExport,
-          start: () => void coach.actions.startVoice(),
+          start: () => {
+            setConversationOpen(true);
+            void coach.actions.startVoice();
+          },
           stop: coach.actions.stopVoice,
           exportSession: coach.actions.exportSession,
+          showConversation:
+            flow.step !== "drill" && (coach.status !== "idle" || coach.lines.length > 0) ? () => setConversationOpen(true) : undefined,
         }}
       />
       <main className={`main step-${flow.step}`} ref={mainRef}>
         {body}
       </main>
+      {username && flow.step !== "drill" && (
+        <Conversation
+          coach={coach}
+          open={conversationOpen}
+          onClose={() => {
+            setConversationOpen(false);
+            document.querySelector<HTMLButtonElement>("[data-conversation-toggle]")?.focus();
+          }}
+        />
+      )}
     </div>
   );
 }

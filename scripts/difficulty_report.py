@@ -48,10 +48,12 @@ def summarize(rows: list[dict]) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--username", required=True)
+    ap.add_argument("--base-url", default=BASE, help="backend or frontend API origin")
     ap.add_argument("--out", default=os.path.join("results", "difficulty_levels.json"))
     args = ap.parse_args()
-    rows = requests.get(f"{BASE}/players/{urllib.parse.quote(args.username, safe='')}/mistakes", timeout=60).json()
-    result = {"username": args.username, **summarize(rows)}
+    response = requests.get(f"{args.base_url.rstrip('/')}/players/{urllib.parse.quote(args.username, safe='')}/mistakes", timeout=60)
+    response.raise_for_status()
+    result = {"username": args.username, "base_url": args.base_url.rstrip('/'), **summarize(response.json())}
     with open(args.out, "w") as f:
         json.dump(result, f, indent=2)
         f.write("\n")

@@ -20,7 +20,7 @@ const sentences = (s: string) => s.split(/(?<=[.!?])\s+/).filter(Boolean);
 describe("profileSummary", () => {
   it("leads with the leak and its evidence, highlighted, in 3-4 sentences", () => {
     const p = profileSummaryParts(base);
-    expect(p.before).toBe("Your recurring leak is ");
+    expect(p.before).toBe("Your recurring weakness is ");
     expect(p.mark).toBe("hanging pieces");
     expect(p.after).toMatch(/^: in 7 of the 11 mistakes I found, a piece was left where it could be taken for free\./);
     const s = profileSummary(base);
