@@ -101,15 +101,18 @@ class ReportServiceIT extends PostgresIT {
     }
 
     @Test
-    void timeTroubleStaysOutOfOtherPatternsAndDefaultExamples() {
+    void timeTroubleHasExamplesAtSelectedLevelsAndRecordedClock() {
         UUID run = UUID.randomUUID();
         seed(run, "DONE");
         move(run, 2, 300, 0.4, "{missed_tactic,time_trouble}", 0.20, false, 1100);   // slip for 1500, clock error
         move(run, 4, 300, 0.4, "{missed_tactic}", 0.20, false, 1500);                // tricky
+        move(run, 6, 300, 0.4, "{time_trouble}", 0.20, false, 1500);
+        jdbc.update("update move set clock_cs=1250 where run_id=? and ply=6", run);
         var def = reports.report("alice").orElseThrow();
         var tt = def.patterns().stream().filter(p -> p.tag().equals("time_trouble")).findFirst().orElseThrow();
         assertEquals(1, tt.count());
-        assertTrue(tt.examples().isEmpty());
+        assertEquals(6, tt.examples().get(0).ply());
+        assertEquals(1250, tt.examples().get(0).recordedClockCs());
         var tactic = def.patterns().stream().filter(p -> p.tag().equals("missed_tactic")).findFirst().orElseThrow();
         assertEquals(1, tactic.count());
         assertEquals(4, tactic.examples().get(0).ply());
@@ -249,26 +252,25 @@ class ReportServiceIT extends PostgresIT {
     }
 
     @Test
-    void clockCandidatesOnlyCountTowardLevelChipsWhenSlipIsFiltered() {
+    void clockCandidatesCountTowardLevelChipsLikeOtherDrills() {
         UUID run = UUID.randomUUID();
         seed(run, "DONE");
         move(run, 2, 300, 0.4, "{missed_tactic,time_trouble}", 0.20, false, 1100);   // clock, slip
         move(run, 4, 300, 0.4, "{time_trouble}", 0.20, false, 1500);                  // clock, tricky
         move(run, 6, 300, 0.4, "{missed_tactic}", 0.20, false, 1500);                 // tricky
         var def = reports.report("alice").orElseThrow();
-        assertEquals(Map.of("slip", 0, "tricky", 1, "deep", 0, "unrated", 0), def.levelCounts());
+        assertEquals(Map.of("slip", 1, "tricky", 2, "deep", 0, "unrated", 0), def.levelCounts());
         var withSlip = reports.report("alice", List.of("slip", "tricky")).orElseThrow();
         assertEquals(Map.of("slip", 1, "tricky", 2, "deep", 0, "unrated", 0), withSlip.levelCounts());
     }
 
     @Test
-    void unratedFallbackIgnoresRatedClockCandidates() {
+    void ratedClockCandidatesPreventTheAllUnratedFallback() {
         UUID run = UUID.randomUUID();
         seed(run, "DONE");
         move(run, 2, 300, 0.4, "{hanging_piece}", 0.2, false, null);
         move(run, 4, 300, 0.4, "{time_trouble}", 0.2, false, 1100);          // rated clock candidate
         var r = reports.report("alice").orElseThrow();
-        var hanging = r.patterns().stream().filter(p -> p.tag().equals("hanging_piece")).findFirst().orElseThrow();
-        assertEquals("unrated", hanging.examples().get(0).level());
+        assertTrue(r.patterns().stream().noneMatch(p -> p.tag().equals("hanging_piece")));
     }
 }

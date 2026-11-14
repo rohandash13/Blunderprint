@@ -16,6 +16,7 @@ import { describeResult } from "./coachText";
 import { droppedMove, resolveBoardInput } from "./boardInput";
 import { parseMove } from "../chess/moveParse";
 import { uciOf } from "../chess/verdict";
+import { clockInputError, expireClock } from "../coach/drillClock";
 
 export const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 export type VoiceStatus = "idle" | "connecting" | "live" | "error";
@@ -70,12 +71,21 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
   const [caption, setCaption] = useState<Caption | null>(null);
   const [busy, setBusy] = useState(false);
   const [checkingMove, setCheckingMove] = useState(false);
+  const [clockNow, setClockNow] = useState(Date.now);
+  const [chatConnecting, setChatConnecting] = useState(false);
   /** Pattern of the example shown with show_mistake, so it can be drilled as is. */
   const [shownTag, setShownTag] = useState<string | null>(null);
   const [, bump] = useReducer((x: number) => x + 1, 0);
 
   const coach = useRef(newCoachState());
   const socket = useRef<AgentSocket | null>(null);
+  const sessionReady = useRef(false);
+  const connecting = useRef<Promise<AgentSocket> | null>(null);
+  const sessionEpoch = useRef(0);
+  const voiceWanted = useRef(false);
+  const voiceRequest = useRef(0);
+  const linesRef = useRef<TranscriptLine[]>([]);
+  const sentMessages = useRef<string[]>([]);
   const mic = useRef<Mic | null>(null);
   const player = useRef<Player | null>(null);
   const recorder = useRef<LatencyRecorder | null>(null);
@@ -97,7 +107,11 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
   const statusRef = useRef(status);
   statusRef.current = status;
 
-  const addLine = (role: LineRole, content: string) => setLines((l) => [...l, { id: ++lineId.current, role, content }]);
+  const addLine = (role: LineRole, content: string) => {
+    const next = [...linesRef.current, { id: ++lineId.current, role, content }];
+    linesRef.current = next;
+    setLines(next);
+  };
   const syncLinePos = () => setLinePos(history.current.position.total > 0 ? { ...history.current.position } : null);
 
   const clearBoard = () => {
@@ -283,7 +297,22 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
       case "ConversationText": {
         const role = String(e.role) === "user" ? "user" : "assistant";
         if (role === "user" && String(e.content).startsWith("Verified move result:")) break;
+        if (role === "user" && String(e.content).startsWith("Clock event:")) break;
+        const echo = role === "user" ? sentMessages.current.indexOf(String(e.content)) : -1;
+        if (echo >= 0) {
+          sentMessages.current.splice(echo, 1);
+          break;
+        }
         const content = role === "user" ? cleanUserLine(String(e.content), coach.current.drill?.exploreFen ?? null) : String(e.content);
+        if (
+          role === "user" &&
+          content &&
+          coach.current.drill?.clock?.status === "running" &&
+          resolveBoardInput(coach.current, visibleFen.current, content)
+        ) {
+          void playTyped(content);
+          break;
+        }
         if (content) addLine(role, content);
         break;
       }
@@ -324,8 +353,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
               } else
                 result = {
                   verdict: "illegal",
-                  reason:
-                    "I couldn't match that phrase to one legal move on the current board. Please name the piece and destination.",
+                  reason: "I couldn't match that phrase to one legal move on the current board. Please name the piece and destination.",
                 };
             }
           } else {
@@ -336,7 +364,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
         }
         break;
       case "Error":
-        stopVoice();
+        closeSession();
         setVoiceError(String(e.description ?? "The voice service reported an error"));
         setStatus("error");
         break;
@@ -345,61 +373,123 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
-  async function startVoice() {
-    stopVoice();
+  function connectAgent(): Promise<AgentSocket> {
+    if (socket.current && sessionReady.current) return Promise.resolve(socket.current);
+    if (connecting.current) return connecting.current;
+    const epoch = sessionEpoch.current;
+    const user = userRef.current;
+    const prior = [...linesRef.current];
+    const d = coach.current.drill;
+    const note = d
+      ? `Current pattern: ${d.tag}; ${d.solved ? "solved" : d.revealed ? "answer shown" : "awaiting a move"}; hints used: ${d.hintsGiven}; clock: ${d.clock?.status ?? "none"}. The visible board and drill are preserved. Ask functions for any chess facts; never restart the drill unless requested.`
+      : undefined;
+    setChatConnecting(true);
     setVoiceError(null);
-    setStatus("connecting");
-    try {
+    const task = (async () => {
       const res = await fetch("/voice/token");
       let body: { token?: string; error?: string };
       try {
         body = await res.json();
       } catch {
-        throw new Error(`Voice is unavailable right now (server answered ${res.status})`);
+        throw new Error(`Coach is unavailable right now (server answered ${res.status})`);
       }
-      if (!res.ok) throw new Error(body.error ?? `Voice token request failed (${res.status})`);
-      player.current = player.current ?? new Player();
-      await player.current.resume();
-      recorder.current = new LatencyRecorder(DEFAULT_CONFIG.thinkModel);
-      const s: AgentSocket = new AgentSocket(buildSettings(DEFAULT_CONFIG, userRef.current), {
-        onEvent: (e) => {
-          if (socket.current === s) void onEventRef.current(e, s);
+      if (!res.ok) throw new Error(body.error ?? `Coach token request failed (${res.status})`);
+      if (typeof body.token !== "string" || !body.token) throw new Error("The coach token response was empty");
+      if (epoch !== sessionEpoch.current) throw new Error("The player session changed");
+      recorder.current ??= new LatencyRecorder(DEFAULT_CONFIG.thinkModel);
+      const s: AgentSocket = new AgentSocket(buildSettings(DEFAULT_CONFIG, user, { history: prior, note, silent: !voiceWanted.current }), {
+        onEvent: (event) => {
+          if (socket.current === s) void onEventRef.current(event, s);
         },
-        onAudio: (c) => {
-          if (socket.current === s) player.current?.play(c);
+        onAudio: (chunk) => {
+          if (socket.current === s && voiceWanted.current) player.current?.play(chunk);
         },
         onClose: (reason) => {
           if (socket.current !== s) return;
-          mic.current?.stop();
-          player.current?.stop();
+          sessionReady.current = false;
           socket.current = null;
-          setStatus((st) => (st === "live" ? "error" : st));
-          setVoiceError((er) => er ?? `Voice disconnected: ${reason}`);
+          const wasVoice = voiceWanted.current;
+          stopVoice();
+          if (wasVoice) setStatus("error");
+          setVoiceError(`Coach disconnected: ${reason}. Send a message or reconnect voice to continue.`);
         },
       });
       socket.current = s;
-      if (typeof body.token !== "string" || !body.token) throw new Error("The voice token response was empty");
-      await s.connect(body.token);
-      if (socket.current !== s) return;
-      mic.current = new Mic();
-      await mic.current.start((pcm) => s.sendAudio(pcm));
-      if (socket.current !== s) return;
+      try {
+        await s.connect(body.token);
+      } catch (err) {
+        if (socket.current === s) socket.current = null;
+        s.close();
+        throw err;
+      }
+      if (epoch !== sessionEpoch.current || socket.current !== s) {
+        s.close();
+        throw new Error("The player session changed");
+      }
+      sessionReady.current = true;
+      return s;
+    })();
+    connecting.current = task;
+    void task
+      .finally(() => {
+        if (connecting.current === task) {
+          connecting.current = null;
+          setChatConnecting(false);
+        }
+      })
+      .catch(() => {});
+    return task;
+  }
+
+  async function startVoice() {
+    if (voiceWanted.current) return;
+    voiceWanted.current = true;
+    const request = ++voiceRequest.current;
+    setVoiceError(null);
+    setStatus("connecting");
+    let capture: Mic | undefined;
+    try {
+      player.current ??= new Player();
+      await player.current.resume();
+      const agent = await connectAgent();
+      if (!voiceWanted.current || request !== voiceRequest.current) return;
+      capture = new Mic();
+      mic.current = capture;
+      await capture.start((pcm) => {
+        if (voiceWanted.current && socket.current === agent) agent.sendAudio(pcm);
+      });
+      if (!voiceWanted.current || request !== voiceRequest.current) {
+        capture.stop();
+        return;
+      }
       setStatus("live");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setVoiceError((er) => er ?? msg);
-      setStatus("error");
+      capture?.stop();
+      if (request !== voiceRequest.current) return;
       stopVoice();
+      setVoiceError(err instanceof Error ? err.message : String(err));
+      setStatus("error");
     }
   }
 
+  // Stopping voice mutes audio and releases the microphone; typed chat keeps its live conversation.
   function stopVoice() {
-    const s = socket.current;
-    socket.current = null;
+    voiceWanted.current = false;
+    voiceRequest.current++;
     mic.current?.stop();
-    s?.close();
     player.current?.stop();
-    setStatus((st) => (st === "error" ? st : "idle"));
+    setStatus("idle");
+  }
+
+  function closeSession() {
+    stopVoice();
+    sessionEpoch.current++;
+    sessionReady.current = false;
+    connecting.current = null;
+    const old = socket.current;
+    socket.current = null;
+    old?.close();
+    setChatConnecting(false);
   }
 
   function exportSession() {
@@ -424,6 +514,12 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     const m = move.trim();
     if (!m || submitting.current || checkingMove) return;
     addLine("user", m);
+    const clockError = clockInputError(coach.current.drill?.clock);
+    if (clockError) {
+      addLine("coach", clockError);
+      bump();
+      return;
+    }
     const input = resolveBoardInput(coach.current, visibleFen.current, m);
     if (!input) {
       manualDrop.current = null;
@@ -456,6 +552,10 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
 
   function playBoard(from: string, to: string, promotion = "q"): boolean {
     if (submitting.current || busy || checkingMove) return false;
+    if (clockInputError(coach.current.drill?.clock)) {
+      bump();
+      return false;
+    }
     const move = droppedMove(visibleFen.current, from, to, promotion);
     const input = move ? resolveBoardInput(coach.current, visibleFen.current, move) : null;
     if (!input) return false;
@@ -464,8 +564,26 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     return true;
   }
 
-  function sendMessage(text: string) {
-    return say(text.trim());
+  async function sendMessage(text: string) {
+    const message = text.trim();
+    if (!message) return false;
+    const epoch = sessionEpoch.current;
+    const connection = connectAgent();
+    addLine("user", message);
+    try {
+      const agent = await connection;
+      if (sessionEpoch.current !== epoch) return false;
+      sentMessages.current.push(message);
+      agent.injectUserMessage(message);
+      return true;
+    } catch (err) {
+      if (sessionEpoch.current === epoch) {
+        const reason = err instanceof Error ? err.message : String(err);
+        setVoiceError(reason);
+        addLine("coach", `Couldn't send that message. ${reason}. Please try again.`);
+      }
+      return false;
+    }
   }
 
   const hint = () => (say("Can I have a hint?") ? undefined : void run("get_hint"));
@@ -548,7 +666,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
 
   // A new player starts a fresh coach: no voice session, board or transcript carries over.
   useEffect(() => {
-    stopVoice();
+    closeSession();
     const lv = coach.current.levels;
     coach.current = newCoachState();
     coach.current.levels = lv;
@@ -556,6 +674,8 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     setReport(null);
     setReportError(null);
     setLines([]);
+    linesRef.current = [];
+    sentMessages.current = [];
     setShownTag(null);
     clearBoard();
     bump();
@@ -564,12 +684,32 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
   useEffect(
     () => () => {
       queue.current.cancel();
-      stopVoice();
+      closeSession();
     },
     [],
   );
 
   const c = coach.current;
+  const clock = c.drill?.clock;
+  useEffect(() => {
+    if (clock?.status !== "running") return;
+    const update = () => {
+      const now = Date.now();
+      setClockNow(now);
+      if (!expireClock(clock, now)) return;
+      const message = "Time's up. Retry the position, or keep practicing without the clock.";
+      addLine("coach", message);
+      setCaption({ text: message, ply: null });
+      if (sessionReady.current)
+        socket.current?.injectUserMessage(
+          "Clock event: Time is up. Do not reveal the answer. Offer reset_position to retry or untimed_practice to continue without time pressure.",
+        );
+      bump();
+    };
+    const timer = window.setInterval(update, 100);
+    update();
+    return () => window.clearInterval(timer);
+  }, [clock, clock?.status]);
   const pendingLeft = c.pending ? c.pending.plies.length - c.pending.next : 0;
   return {
     fen,
@@ -586,6 +726,8 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     reportError,
     busy,
     checkingMove,
+    clockNow,
+    chatConnecting,
     drill: c.drill,
     lastShown: c.lastShown,
     shownTag,
@@ -596,6 +738,9 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
       playTyped,
       playBoard,
       sendMessage,
+      startClock: () => run("start_clock"),
+      untimedPractice: () => run("untimed_practice"),
+      retryClock: () => run("reset_position"),
       hint,
       reveal,
       reset,

@@ -35,6 +35,8 @@ drill for a 1200.
   on a board with hints, line playout, and per-move explanation.
 - Voice: Deepgram Voice Agent in the browser (Chrome, microphone, headphones recommended); a visible conversation panel opens before the board, and everything also works
   by dragging pieces, typing moves and clicking.
+- Stopping voice turns off the microphone and audio while preserving the conversation. Typed chat works without starting voice, and reconnects carry the conversation forward.
+- Time-trouble positions support a timed decision on the same board, using a recorded game-clock budget when available or a short fallback. The player starts when ready and can retry or continue untimed.
 - Desktop first (board + coach side by side); must remain usable on a phone.
 
 ## Capabilities and Constraints

@@ -8,6 +8,7 @@ import { CoachPanel } from "./CoachPanel";
 import { ChevronLeft, ChevronRight } from "./Icons";
 import type { Coach } from "./useCoach";
 import { useReducedMotion } from "./useReducedMotion";
+import { DecisionClock } from "./DecisionClock";
 
 const LEVEL_WORD: Record<Level, string> = { slip: "Slip", tricky: "Tricky", deep: "Deep", unrated: "Not yet rated" };
 const MAX_BOARD = 600;
@@ -91,6 +92,9 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
   const canNext = !coach.checkingMove && ((linePos ? linePos.ply < linePos.total : false) || pendingLeft > 0);
   const boardW = Math.max(240, Math.min(MAX_BOARD, wrapW));
   const title = tag ? patternLabel(tag).name : "A mistake from your game";
+  const clock = drill?.clock;
+  const covered = clock?.status === "ready";
+  const clockBlocked = covered || clock?.status === "expired";
 
   return (
     <div className="drill">
@@ -110,29 +114,53 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
         </header>
 
         <div className="board-wrap" ref={wrapRef}>
-          <div className="board-frame" style={{ width: boardW }}>
-            <Chessboard
-              id="bp"
-              position={fen}
-              boardWidth={boardW}
-              boardOrientation={toMove === "White" ? "white" : "black"}
-              arePiecesDraggable={!!drill && !coach.busy && !coach.checkingMove && fen.split(" ")[1] === ex.fen.split(" ")[1]}
-              isDraggablePiece={({ piece }) => piece[0] === fen.split(" ")[1]}
-              onPieceDragBegin={(_piece, square) => setDragFrom(square)}
-              onPieceDragEnd={() => setDragFrom(null)}
-              onPieceDrop={(from, to) => {
-                setDragFrom(null);
-                return actions.playBoard(from, to);
-              }}
-              onPromotionPieceSelect={(piece, from, to) => !!piece && !!from && !!to && actions.playBoard(from, to, piece[1].toLowerCase())}
-              animationDuration={reduceMotion ? 0 : 260}
-              customSquareStyles={squareStyles}
-              customArrows={arrows as CbArrow[]}
-              customLightSquareStyle={{ backgroundColor: "#F0D9B5" }}
-              customDarkSquareStyle={{ backgroundColor: "#B58863" }}
-              customBoardStyle={{ borderRadius: "2px" }}
-              customNotationStyle={{ color: "#2a1d12", fontWeight: "700", fontSize: "11px" }}
+          {clock && (
+            <DecisionClock
+              clock={clock}
+              now={coach.clockNow}
+              onUntimed={() => void actions.untimedPractice()}
+              onRetry={() => void actions.retryClock()}
+              busy={coach.busy || coach.checkingMove}
             />
+          )}
+          <div className="board-frame" style={{ width: boardW }}>
+            <div style={{ visibility: covered ? "hidden" : undefined }}>
+              <Chessboard
+                id="bp"
+                position={fen}
+                boardWidth={boardW}
+                boardOrientation={toMove === "White" ? "white" : "black"}
+                arePiecesDraggable={
+                  !!drill && !clockBlocked && !coach.busy && !coach.checkingMove && fen.split(" ")[1] === ex.fen.split(" ")[1]
+                }
+                isDraggablePiece={({ piece }) => piece[0] === fen.split(" ")[1]}
+                onPieceDragBegin={(_piece, square) => setDragFrom(square)}
+                onPieceDragEnd={() => setDragFrom(null)}
+                onPieceDrop={(from, to) => {
+                  setDragFrom(null);
+                  return actions.playBoard(from, to);
+                }}
+                onPromotionPieceSelect={(piece, from, to) =>
+                  !!piece && !!from && !!to && actions.playBoard(from, to, piece[1].toLowerCase())
+                }
+                animationDuration={reduceMotion ? 0 : 260}
+                customSquareStyles={squareStyles}
+                customArrows={arrows as CbArrow[]}
+                customLightSquareStyle={{ backgroundColor: "#F0D9B5" }}
+                customDarkSquareStyle={{ backgroundColor: "#B58863" }}
+                customBoardStyle={{ borderRadius: "2px" }}
+                customNotationStyle={{ color: "#2a1d12", fontWeight: "700", fontSize: "11px" }}
+              />
+            </div>
+            {covered && (
+              <div className="clock-ready-cover">
+                <h2>Ready for the clock?</h2>
+                <p>Find a stronger move before time runs out. Drag, type or speak your move.</p>
+                <button type="button" className="btn btn-primary" onClick={() => void actions.startClock()} disabled={coach.busy}>
+                  Start clock
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -155,9 +183,7 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
               {caption?.text ??
                 (drill
                   ? "Find the stronger move. Drag a piece, type a move, or say it with voice on."
-                  : coach.shownTag === "time_trouble"
-                    ? "Clock mistakes can be viewed, but aren't drilled."
-                    : "Your move and the stronger one are shown. Choose Drill this position to play your own moves.")}
+                  : "Your move and the stronger one are shown. Choose Drill this position to play your own moves.")}
             </p>
           </div>
           <button

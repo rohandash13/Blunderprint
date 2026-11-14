@@ -12,7 +12,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class ReportService {
     public record Example(String gameId, int ply, String fen, String played, String best, int cpl, double pPlayed,
-                           List<String> pv, String level, String kind, String severity, Integer difficultyElo) {}
+                           List<String> pv, String level, String kind, String severity, Integer difficultyElo,
+                           Integer recordedClockCs) {}
     public record PatternSummary(String tag, int count, double avgCpl, List<Example> examples) {}
     public record Report(String username, UUID runId, int movesAnalyzed, int mistakes, int candidates,
                          List<PatternSummary> patterns, List<String> levels, Map<String, Integer> levelCounts) {}
@@ -76,7 +77,7 @@ public class ReportService {
         return new Example(rs.getString("game_id"), rs.getInt("ply"), rs.getString("before_fen"),
             rs.getString("played_uci"), rs.getString("best_uci"), rs.getInt("cpl"), rs.getDouble("p_played"),
             splitPv(rs.getString("pv")), rs.getString("level"), kind((Boolean) rs.getObject("best_quiet")),
-            severity(wd), (Integer) rs.getObject("difficulty_elo"));
+            severity(wd), (Integer) rs.getObject("difficulty_elo"), (Integer) rs.getObject("clock_cs"));
     }
 
     double minP() {
@@ -108,7 +109,7 @@ public class ReportService {
 
         String lvl = difficulty.sqlLevel("a.difficulty_elo", "m.rating");
         List<Cand> cands = jdbc.query("""
-            select m.game_id, m.ply, m.before_fen, m.played_uci, a.best_uci, a.cpl, a.p_played, a.tags, a.win_drop,
+            select m.game_id, m.ply, m.before_fen, m.played_uci, m.clock_cs, a.best_uci, a.cpl, a.p_played, a.tags, a.win_drop,
                    a.best_quiet, a.difficulty_elo, c.pv, %s as level
             from move m join move_analysis a on a.move_id = m.id
             join analysis_run r on r.id = m.run_id
@@ -123,33 +124,23 @@ public class ReportService {
 
         // When no candidate in the run has an estimate yet, show unrated ones rather than nothing.
         List<String> effective = new ArrayList<>(levels);
-        // Clock candidates are not level-filtered, so only the others decide whether levels exist at all.
-        List<Cand> levelled = cands.stream().filter(c -> !c.tag().equals("time_trouble")).toList();
-        boolean allUnrated = !levelled.isEmpty() && levelled.stream().allMatch(c -> c.level().equals("unrated"));
+        boolean allUnrated = !cands.isEmpty() && cands.stream().allMatch(c -> c.level().equals("unrated"));
         if (allUnrated && !effective.contains("unrated")) effective.add("unrated");
-        boolean clockExamples = effective.contains("slip");
-
-        // Clock (time_trouble) candidates only ever yield examples under the slip filter, so they only count
-        // toward the level chips then; otherwise a chip could promise positions that are not there.
         Map<String, Integer> levelCounts = new LinkedHashMap<>();
         for (String l : Difficulty.ALL) levelCounts.put(l, 0);
         for (Cand c : cands) {
-            if (c.tag().equals("time_trouble") && !clockExamples) continue;
             levelCounts.merge(c.level(), 1, Integer::sum);
         }
 
         Map<String, List<Example>> examples = new LinkedHashMap<>();
         Map<String, double[]> stats = new HashMap<>();     // tag -> [count, sumCpl]
         for (Cand c : cands) {                              // already ordered by win_drop desc, game, ply
-            boolean clock = c.tag().equals("time_trouble");
-            // Clock errors always count toward their pattern; other patterns follow the level filter.
-            if (!clock && !effective.contains(c.level())) continue;
+            if (!effective.contains(c.level())) continue;
             double[] st = stats.computeIfAbsent(c.tag(), t -> new double[2]);
             st[0] += 1;
             st[1] += c.example().cpl();
             List<Example> ex = examples.computeIfAbsent(c.tag(), t -> new ArrayList<>());
-            boolean eligible = !clock || (clockExamples && effective.contains(c.level()));
-            if (eligible && ex.size() < 3) ex.add(c.example());
+            if (ex.size() < 3) ex.add(c.example());
         }
 
         List<PatternSummary> patterns = new ArrayList<>();

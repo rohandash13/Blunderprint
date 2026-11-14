@@ -12,6 +12,7 @@ import { profileInsights } from "../profile/profileInsights";
 import { profileSummary } from "../profile/profileSummary";
 import type { Profile } from "../profile/types";
 import type { Example, Level, Report } from "../types";
+import { newDrillClock, clockInputError, submitClock, type DrillClock } from "./drillClock";
 
 /** [fromSquare, toSquare, cssColor] */
 export type Arrow = [string, string, string];
@@ -31,18 +32,33 @@ const NO_ARGS = { type: "object" as const, properties: {} };
 
 export const FUNCTION_DEFS: FunctionDef[] = [
   {
+    name: "start_clock",
+    description:
+      "Start the time-trouble decision clock when the player says ready. The board's practice timer uses a recorded game clock or a thirty-second fallback. Do not start before the player is ready.",
+    parameters: NO_ARGS,
+  },
+  {
+    name: "untimed_practice",
+    description:
+      "Remove time pressure from the current time-trouble drill so the player can keep practicing after time runs out, or whenever they ask to practice without a clock.",
+    parameters: NO_ARGS,
+  },
+  {
     name: "get_profile",
-    description: "Get an overview of the player: a written summary, their ratings, strengths, weaknesses and the pattern worth working on first. Call this first in a session, then give a two to three sentence overview and offer focus choices.",
+    description:
+      "Get an overview of the player: a written summary, their ratings, strengths, weaknesses and the pattern worth working on first. Call this first in a session, then give a two to three sentence overview and offer focus choices.",
     parameters: NO_ARGS,
   },
   {
     name: "get_report",
-    description: "Get the player's Blunderprint report: their recurring mistake patterns, each with a friendly name, description, count and average centipawn loss. Call it before going into detail on specific patterns.",
+    description:
+      "Get the player's Blunderprint report: their recurring mistake patterns, each with a friendly name, description, count and average centipawn loss. Call it before going into detail on specific patterns.",
     parameters: NO_ARGS,
   },
   {
     name: "show_mistake",
-    description: "Show one example of a mistake pattern on the board (played move in red, engine best in green) and get spoken-move facts about it. Use when the player wants to see or understand a past mistake, not to drill it.",
+    description:
+      "Show one example of a mistake pattern on the board (played move in red, engine best in green) and get spoken-move facts about it. Use when the player wants to see or understand a past mistake, not to drill it.",
     parameters: {
       type: "object",
       properties: {
@@ -54,7 +70,8 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   },
   {
     name: "start_drill",
-    description: "Set up a position from one of the player's past mistakes with their move hidden, so they can find the better move. Use when they want to practice a pattern or ask for the next position. Stay on a position until they ask to move on.",
+    description:
+      "Set up a position from one of the player's past mistakes with their move hidden, so they can find the better move. Use when they want to practice a pattern or ask for the next position. Stay on a position until they ask to move on.",
     parameters: {
       type: "object",
       properties: { tag: { type: "string", description: "Pattern tag from get_report" } },
@@ -63,7 +80,8 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   },
   {
     name: "play_move",
-    description: "Play the move the player said as an attempt at the current drill. Only the player's move is shown; the engine's continuation waits for next_move. Returns a verdict (best, repeated_mistake, other, illegal) computed by code, the player's move as facts, the first reply as next, and an eval from the player's side. Wrong attempts never reveal the answer. Attempts are unlimited.",
+    description:
+      "Play the move the player said as an attempt at the current drill. Only the player's move is shown; the engine's continuation waits for next_move. Returns a verdict (best, repeated_mistake, other, illegal) computed by code, the player's move as facts, the first reply as next, and an eval from the player's side. Wrong attempts never reveal the answer. Attempts are unlimited.",
     parameters: {
       type: "object",
       properties: { move: { type: "string", description: "The move exactly as the player said it, e.g. 'knight f3' or 'Nf3'" } },
@@ -72,17 +90,20 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   },
   {
     name: "get_hint",
-    description: "Give the next hint (idea, then piece, then square) for the current drill. Use when the player is stuck or asks for a hint. After three hints, offer to reveal the answer.",
+    description:
+      "Give the next hint (idea, then piece, then square) for the current drill. Use when the player is stuck or asks for a hint. After three hints, offer to reveal the answer.",
     parameters: NO_ARGS,
   },
   {
     name: "reveal_answer",
-    description: "Show the engine best move and the player's game move on the board and return them as spoken text. Use only after the hints are used up, or when the player says they do not know or asks to see the answer.",
+    description:
+      "Show the engine best move and the player's game move on the board and return them as spoken text. Use only after the hints are used up, or when the player says they do not know or asks to see the answer.",
     parameters: NO_ARGS,
   },
   {
     name: "explain_line",
-    description: "Play the engine's best line out on the board and return per-move facts (captures, checks, forks, material). Use when the player asks why a move is best; explain using only the returned facts.",
+    description:
+      "Play the engine's best line out on the board and return per-move facts (captures, checks, forks, material). Use when the player asks why a move is best; explain using only the returned facts.",
     parameters: {
       type: "object",
       properties: { plies: { type: "integer", description: "How many moves to play out (default 6)" } },
@@ -90,7 +111,8 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   },
   {
     name: "try_move",
-    description: "Explore a what-if from the current exploration position: plays the move, returns it as facts with the first reply as next, and holds the engine's continuation for next_move. Does not count as a drill attempt.",
+    description:
+      "Explore a what-if from the current exploration position: plays the move, returns it as facts with the first reply as next, and holds the engine's continuation for next_move. Does not count as a drill attempt.",
     parameters: {
       type: "object",
       properties: { move: { type: "string", description: "The move as the player said it" } },
@@ -99,21 +121,26 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   },
   {
     name: "reset_position",
-    description: "Put the board back to the drill position after exploring. Use when the player wants to start over or try the original position again.",
+    description:
+      "Put the board back to the drill position after exploring. Use when the player wants to start over or try the original position again.",
     parameters: NO_ARGS,
   },
   {
     name: "set_levels",
-    description: "Change which challenge levels the report and drills use: slip (something they would usually spot at their level), tricky (worth slowing down for), deep (a stretch at their level). Use when the player asks for easier or harder positions.",
+    description:
+      "Change which challenge levels the report and drills use: slip (something they would usually spot at their level), tricky (worth slowing down for), deep (a stretch at their level). Use when the player asks for easier or harder positions.",
     parameters: {
       type: "object",
-      properties: { levels: { type: "array", items: { type: "string", enum: ["slip", "tricky", "deep"] }, description: "One or more levels" } },
+      properties: {
+        levels: { type: "array", items: { type: "string", enum: ["slip", "tricky", "deep"] }, description: "One or more levels" },
+      },
       required: ["levels"],
     },
   },
   {
     name: "step_line",
-    description: "Step the board through the last played line. Use when the player says go back, forward, back to the start, or to the end.",
+    description:
+      "Step the board through the last played line. Use when the player says go back, forward, back to the start, or to the end.",
     parameters: {
       type: "object",
       properties: { direction: { type: "string", enum: ["back", "forward", "start", "end"] } },
@@ -122,12 +149,14 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   },
   {
     name: "next_move",
-    description: "Show the next move of the line after play_move or try_move: one move at a time, with an arrow. Returns that move's facts and a caption; explain only that move in one sentence. Call again until done is true, unless the player interrupts. The eval comes with the last move.",
+    description:
+      "Show the next move of the line after play_move or try_move: one move at a time, with an arrow. Returns that move's facts and a caption; explain only that move in one sentence. Call again until done is true, unless the player interrupts. The eval comes with the last move.",
     parameters: NO_ARGS,
   },
 ];
 
 export interface Drill {
+  clock?: DrillClock;
   tag: string;
   example: Example;
   attempts: number;
@@ -201,7 +230,10 @@ const PATTERN_INFO: Record<string, { name: string; description: string }> = {
   opening_error: { name: "Opening mistakes", description: "Opening mistakes — in the first 10 moves" },
   endgame_technique: { name: "Endgame technique", description: "Endgame technique — with few pieces left" },
   time_trouble: { name: "Time trouble", description: "Time trouble — under 30 seconds on the clock" },
-  positional: { name: "Positional decisions", description: "Positional decisions — a quiet move was best, no capture or check, just the right plan" },
+  positional: {
+    name: "Positional decisions",
+    description: "Positional decisions — a quiet move was best, no capture or check, just the right plan",
+  },
   other: { name: "Uncategorized mistakes", description: "Uncategorized mistakes — tactical errors no other rule matched" },
 };
 
@@ -228,7 +260,13 @@ function factsOut(f: MoveFacts | null) {
 const forYou = (diff: number, side: "White" | "Black") => (side === "White" ? diff : -diff);
 
 const sideToMove = (fen: string): "White" | "Black" => (fen.split(" ")[1] === "w" ? "White" : "Black");
-const isGameOver = (fen: string) => { try { return new Chess(fen).isGameOver(); } catch { return false; } };
+const isGameOver = (fen: string) => {
+  try {
+    return new Chess(fen).isGameOver();
+  } catch {
+    return false;
+  }
+};
 const isOpen = (d: Drill) => !d.solved && !d.revealed;
 
 type Side = "White" | "Black";
@@ -239,11 +277,22 @@ type Side = "White" | "Black";
  */
 async function playOut(mine: MoveFacts, you: Side, fx: CoachEffects, hideBest: string | null = null) {
   if (mine.mate) {
-    return { line: [] as MoveFacts[], evalSpoken: "Checkmate, you win" as string | null, materialForYou: forYou(mine.materialAfter, you), finalFen: mine.fenAfter };
+    return {
+      line: [] as MoveFacts[],
+      evalSpoken: "Checkmate, you win" as string | null,
+      materialForYou: forYou(mine.materialAfter, you),
+      finalFen: mine.fenAfter,
+    };
   }
   const a = await fx.analyze(mine.fenAfter);
   if (!a) {
-    return { line: [] as MoveFacts[], evalSpoken: null as string | null, materialForYou: forYou(mine.materialAfter, you), finalFen: mine.fenAfter, note: "No engine line available. Do not describe a continuation." };
+    return {
+      line: [] as MoveFacts[],
+      evalSpoken: null as string | null,
+      materialForYou: forYou(mine.materialAfter, you),
+      finalFen: mine.fenAfter,
+      note: "No engine line available. Do not describe a continuation.",
+    };
   }
   let line = lineFacts(mine.fenAfter, a.pv.length > 0 ? a.pv : [a.bestUci], PLAYOUT_PLIES);
   if (hideBest) {
@@ -318,16 +367,41 @@ export async function handleFunctionCall(
   fx: CoachEffects,
 ): Promise<unknown> {
   switch (name) {
-    case "play_move": return playMove(args, state, fx);
-    case "get_hint": return getHint(state, fx);
-    case "reveal_answer": return revealAnswer(state, fx);
-    case "explain_line": return explainLine(args, state, fx);
-    case "try_move": return tryMove(args, state, fx);
-    case "reset_position": return resetPosition(state, fx);
-    case "set_levels": return setLevels(args, state, fx);
-    case "step_line": return stepLine(args, state, fx);
-    case "next_move": return nextMove(state, fx);
-    case "get_profile": return getProfile(state, fx);
+    case "start_clock": {
+      const clock = state.drill?.clock;
+      if (!clock) return { error: "No timed drill is open. Call start_drill with time_trouble first." };
+      if (clock.status !== "ready") return { error: "This attempt has already started. Reset for a new timed attempt." };
+      clock.status = "running";
+      clock.deadline = Date.now() + clock.budgetMs;
+      return { status: "Clock running. Make your move by voice, dragging or typing.", seconds: clock.budgetMs / 1000 };
+    }
+    case "untimed_practice": {
+      const clock = state.drill?.clock;
+      if (!clock) return { error: "No timed drill is open." };
+      clock.status = "untimed";
+      clock.deadline = null;
+      return { status: "Clock off. Keep practicing at your own pace." };
+    }
+    case "play_move":
+      return playMove(args, state, fx);
+    case "get_hint":
+      return getHint(state, fx);
+    case "reveal_answer":
+      return revealAnswer(state, fx);
+    case "explain_line":
+      return explainLine(args, state, fx);
+    case "try_move":
+      return tryMove(args, state, fx);
+    case "reset_position":
+      return resetPosition(state, fx);
+    case "set_levels":
+      return setLevels(args, state, fx);
+    case "step_line":
+      return stepLine(args, state, fx);
+    case "next_move":
+      return nextMove(state, fx);
+    case "get_profile":
+      return getProfile(state, fx);
   }
 
   if (name !== "get_report" && name !== "show_mistake" && name !== "start_drill") {
@@ -399,6 +473,7 @@ function beginDrill(tag: string, ex: Example, state: CoachState, fx: CoachEffect
   state.lastShown = ex;
   state.pending = null;
   state.drill = { tag, example: ex, attempts: 0, hintsGiven: 0, solved: false, revealed: false, exploreFen: ex.fen };
+  if (tag === "time_trouble") state.drill.clock = newDrillClock(ex.recordedClockCs);
   fx.showPosition(ex.fen);
   return {
     status: `Position ready, ${side(ex.fen)} to move`,
@@ -407,6 +482,15 @@ function beginDrill(tag: string, ex: Example, state: CoachState, fx: CoachEffect
     level: ex.level,
     kind: ex.kind,
     difficultyNote: difficultyNote(ex.level, ex.kind),
+    ...(state.drill.clock
+      ? {
+          timed: true,
+          seconds: state.drill.clock.budgetMs / 1000,
+          clockSource: state.drill.clock.source,
+          instruction:
+            "The board is covered until the player says ready or clicks Start clock. Then choose a move before time runs out. The timer stops on a legal move, before engine review.",
+        }
+      : {}),
   };
 }
 
@@ -418,9 +502,12 @@ export function openPosition(tag: string, ex: Example, state: CoachState, fx: Co
 async function playMove(args: Record<string, unknown>, state: CoachState, fx: CoachEffects) {
   const d = state.drill;
   if (!d) return NO_DRILL;
+  const clockError = clockInputError(d.clock);
+  if (clockError) return { error: clockError };
   const ex = d.example;
   const j = judge(ex.fen, String(args.move ?? ""), ex.best, ex.played);
   if (j.verdict === "illegal") return { verdict: j.verdict, reason: j.reason };
+  submitClock(d.clock);
   d.attempts += 1;
   state.pending = null;
   await fx.flashMove(ex.fen, j.uci!);
@@ -442,7 +529,16 @@ async function playMove(args: Record<string, unknown>, state: CoachState, fx: Co
     return { verdict: "best", spoken, attempts: d.attempts, facts, ...lineSummary(play), next };
   }
   d.exploreFen = ex.fen; // attempts are always judged from the drill start
-  return { verdict: j.verdict, spoken, attempts: d.attempts, hintsGiven: d.hintsGiven, hintsRemaining: 3 - d.hintsGiven, facts, ...lineSummary(play), next };
+  return {
+    verdict: j.verdict,
+    spoken,
+    attempts: d.attempts,
+    hintsGiven: d.hintsGiven,
+    hintsRemaining: 3 - d.hintsGiven,
+    facts,
+    ...lineSummary(play),
+    next,
+  };
 }
 
 function getHint(state: CoachState, fx: CoachEffects) {
@@ -452,6 +548,10 @@ function getHint(state: CoachState, fx: CoachEffects) {
   const hint = hintLadder(d.example.fen, d.example.best)[d.hintsGiven];
   d.hintsGiven += 1;
   if (d.hintsGiven === 3) {
+    if (d.clock) {
+      d.clock.status = "untimed";
+      d.clock.deadline = null;
+    }
     d.exploreFen = d.example.fen;
     state.pending = null;
     fx.showPosition(d.example.fen, [arrow(d.example.best, BEST)]);
@@ -462,6 +562,10 @@ function getHint(state: CoachState, fx: CoachEffects) {
 function revealAnswer(state: CoachState, fx: CoachEffects) {
   const d = state.drill;
   if (!d) return NO_DRILL;
+  if (d.clock) {
+    d.clock.status = "untimed";
+    d.clock.deadline = null;
+  }
   const ex = d.example;
   d.revealed = true;
   d.exploreFen = ex.fen;
@@ -478,6 +582,10 @@ function revealAnswer(state: CoachState, fx: CoachEffects) {
 async function explainLine(args: Record<string, unknown>, state: CoachState, fx: CoachEffects) {
   const ex = state.drill?.example ?? state.lastShown;
   if (!ex) return NO_DRILL;
+  if (state.drill?.clock) {
+    state.drill.clock.status = "untimed";
+    state.drill.clock.deadline = null;
+  }
   const n = Number(args.plies);
   const plies = Number.isInteger(n) && n > 0 ? n : 6;
   const full = ex.pv.length > 0 ? ex.pv : ((await fx.analyze(ex.fen))?.pv ?? []);
@@ -485,7 +593,11 @@ async function explainLine(args: Record<string, unknown>, state: CoachState, fx:
   if (line.length === 0) {
     return { error: "No engine line is available for this position. Say so; do not explain from memory." };
   }
-  await fx.animateLine(ex.fen, line.map((f) => f.uci), BEST);
+  await fx.animateLine(
+    ex.fen,
+    line.map((f) => f.uci),
+    BEST,
+  );
   const before = material(ex.fen).diff;
   return {
     line: line.map((f, i) => ({
@@ -505,6 +617,8 @@ async function explainLine(args: Record<string, unknown>, state: CoachState, fx:
 async function tryMove(args: Record<string, unknown>, state: CoachState, fx: CoachEffects) {
   const d = state.drill;
   if (!d) return NO_DRILL;
+  const clockError = clockInputError(d.clock);
+  if (clockError) return { error: clockError };
   const input = String(args.move ?? "");
   const you = sideToMove(d.example.fen);
   // A new move interrupts the line being shown: it is played from where that line began.
@@ -517,6 +631,7 @@ async function tryMove(args: Record<string, unknown>, state: CoachState, fx: Coa
   const parsed = parseMove(from, input);
   const mine = parsed ? describeMove(from, uciOf(parsed)) : null;
   if (!parsed || !mine) return { verdict: "illegal", reason: `No single legal move matches "${input}"` };
+  submitClock(d.clock);
   state.pending = null;
   await fx.flashMove(from, mine.uci);
   const play = await playOut(mine, you, fx, isOpen(d) ? d.example.best : null);
@@ -553,16 +668,17 @@ async function getProfile(state: CoachState, fx: CoachEffects) {
   const profile = state.profile;
   if (!profile) return { error: "no profile yet" };
   const { strengths, leaks } = profileInsights(profile);
-  const top = [...profile.patterns]
-    .filter((p) => p.tag !== "time_trouble" && p.tag !== "other")
-    .sort((a, b) => b.count - a.count)[0];
+  const top = [...profile.patterns].filter((p) => p.tag !== "time_trouble" && p.tag !== "other").sort((a, b) => b.count - a.count)[0];
   return {
     summary: profileSummary(profile),
     gamesAnalyzed: profile.analyzed.games,
     ratings: profile.ratings ? Object.fromEntries(Object.entries(profile.ratings).map(([k, v]) => [k, v.rating])) : null,
     strengths: strengths.map((x) => x.text),
     leaks: leaks.map((x) => x.text),
-    topPattern: top && top.count > 0 ? { tag: top.tag, name: patternLabel(top.tag).name, description: patternLabel(top.tag).description, count: top.count } : null,
+    topPattern:
+      top && top.count > 0
+        ? { tag: top.tag, name: patternLabel(top.tag).name, description: patternLabel(top.tag).description, count: top.count }
+        : null,
   };
 }
 
@@ -571,6 +687,13 @@ function resetPosition(state: CoachState, fx: CoachEffects) {
   if (!d) return NO_DRILL;
   d.exploreFen = d.example.fen;
   d.awaitingReply = false;
+  if (d.clock) {
+    d.clock = newDrillClock(d.example.recordedClockCs);
+    d.solved = false;
+    d.revealed = false;
+    d.hintsGiven = 0;
+    d.attempts = 0;
+  }
   state.pending = null;
   fx.showPosition(d.example.fen);
   return { status: "Back to the drill position" };

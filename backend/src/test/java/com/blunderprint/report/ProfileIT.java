@@ -195,9 +195,11 @@ class ProfileIT extends PostgresIT {
     void positionEndpointReturnsExampleOr404() throws Exception {
         game("g1", "alice", "x", "1-0", "2026-01-01T00:00:00Z");
         move("g1", 2, "w", START, null, 0.20, false, "{missed_tactic}", 1500);
+        jdbc.update("update move set clock_cs=1250 where run_id=? and game_id='g1'", run);
         jdbc.update("insert into eval_cache(fen_key, engine, depth, multipv, best_uci, score_cp, pv) values ('k', 'sf', 10, 1, 'd2d4', 50, 'd2d4 d7d5')");
         mvc.perform(get("/players/Alice/positions/g1/2")).andExpect(status().isOk())
             .andExpect(jsonPath("$.gameId").value("g1"))
+            .andExpect(jsonPath("$.recordedClockCs").value(1250))
             .andExpect(jsonPath("$.ply").value(2))
             .andExpect(jsonPath("$.fen").value(START))
             .andExpect(jsonPath("$.played").value("e2e4"))

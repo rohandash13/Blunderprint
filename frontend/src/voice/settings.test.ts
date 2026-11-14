@@ -3,7 +3,7 @@ import { DEFAULT_CONFIG, KEYTERMS, buildSettings } from "./settings";
 
 describe("buildSettings", () => {
   const s = buildSettings(DEFAULT_CONFIG, "alice") as any;
-  it("leaves legality to code and narrates verified UI moves without replaying them",()=>{
+  it("leaves legality to code and narrates verified UI moves without replaying them", () => {
     expect(s.agent.think.prompt).toContain("Never reject a move without calling play_move");
     expect(s.agent.think.prompt).toContain("Verified move result");
     expect(s.agent.think.prompt).toContain("weaknesses");
@@ -25,9 +25,39 @@ describe("buildSettings", () => {
   });
 
   it("declares the coach functions and names the player in the prompt", () => {
-    expect(s.agent.think.functions.map((f: { name: string }) => f.name)).toEqual(["get_profile", "get_report", "show_mistake", "start_drill", "play_move", "get_hint", "reveal_answer", "explain_line", "try_move", "reset_position", "set_levels", "step_line", "next_move"]);
+    expect(s.agent.think.functions.map((f: { name: string }) => f.name)).toEqual([
+      "start_clock",
+      "untimed_practice",
+      "get_profile",
+      "get_report",
+      "show_mistake",
+      "start_drill",
+      "play_move",
+      "get_hint",
+      "reveal_answer",
+      "explain_line",
+      "try_move",
+      "reset_position",
+      "set_levels",
+      "step_line",
+      "next_move",
+    ]);
     expect(s.agent.think.prompt).toContain("alice");
-    for (const w of ["play_move", "get_hint", "explain_line", "try_move", "spoken", "uncategorized mistakes", "attacks two pieces", "evalSpoken", "materialForYou", "set_levels", "step_line", "get_profile", "next_move"]) {
+    for (const w of [
+      "play_move",
+      "get_hint",
+      "explain_line",
+      "try_move",
+      "spoken",
+      "uncategorized mistakes",
+      "attacks two pieces",
+      "evalSpoken",
+      "materialForYou",
+      "set_levels",
+      "step_line",
+      "get_profile",
+      "next_move",
+    ]) {
       expect(s.agent.think.prompt).toContain(w);
     }
     expect(s.agent.think.prompt).not.toContain("harderThanPercent");
@@ -35,7 +65,7 @@ describe("buildSettings", () => {
     expect(s.agent.think.prompt).toContain("never percentages or ratings");
     expect(s.agent.think.prompt).toContain("alternate positional and tactical");
     expect(s.agent.think.prompt).toContain("Only drill or show patterns where drillable is true");
-    expect(s.agent.think.prompt).toContain("a time-trouble pattern is about the clock");
+    expect(s.agent.think.prompt).toContain("time_trouble is a timed decision drill");
     expect(s.agent.think.prompt).toContain("Start every session by calling get_profile");
     expect(s.agent.think.prompt).toContain("two to three sentence overview");
     expect(s.agent.think.prompt).toContain("offer focus choices");
@@ -48,5 +78,21 @@ describe("buildSettings", () => {
   it("honors a different model", () => {
     const c = buildSettings({ ...DEFAULT_CONFIG, thinkProvider: "anthropic", thinkModel: "claude-haiku-5-5" }, "bob") as any;
     expect(c.agent.think.provider).toEqual({ type: "anthropic", model: "claude-haiku-5-5" });
+  });
+  it("resumes supplied history without a greeting and supports silent text connections", () => {
+    const resumed = buildSettings(DEFAULT_CONFIG, "alice", {
+      history: [
+        { role: "user", content: "Time trouble?" },
+        { role: "coach", content: "Let's practice that." },
+      ],
+      note: "time_trouble ready",
+    }) as any;
+    expect(resumed.agent.greeting).toBeUndefined();
+    expect(resumed.agent.context.messages).toEqual([
+      { type: "History", role: "user", content: "Time trouble?" },
+      { type: "History", role: "assistant", content: "Let's practice that." },
+    ]);
+    expect(resumed.agent.think.prompt).toContain("Do not greet");
+    expect((buildSettings(DEFAULT_CONFIG, "alice", { silent: true }) as any).agent.greeting).toBeUndefined();
   });
 });

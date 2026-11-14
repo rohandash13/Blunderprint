@@ -4,6 +4,7 @@ import { difficultyNote } from "../coach/difficultyNote";
 import { LevelControl } from "./LevelControl";
 import type { Coach } from "./useCoach";
 import type { Level } from "../types";
+import { clockRemaining } from "../coach/drillClock";
 
 interface Props {
   coach: Coach;
@@ -25,6 +26,16 @@ function promptFor(coach: Coach): { head: string; body: string } {
     };
   }
   const side = d.example.fen.split(" ")[1] === "w" ? "White" : "Black";
+  if (d.clock?.status === "ready")
+    return {
+      head: "Get ready for a timed decision",
+      body: "Start the clock when you're ready. The position will appear, and you can drag, type or speak your move.",
+    };
+  if (d.clock?.status === "expired")
+    return {
+      head: "Time’s up",
+      body: "Retry the timed attempt, or keep practicing without the clock. The answer stays hidden until you ask.",
+    };
   if (d.solved) return { head: "Solved", body: "Step through the line with Next, try other moves, or go on to the next position." };
   if (d.revealed)
     return {
@@ -40,8 +51,10 @@ function promptFor(coach: Coach): { head: string; body: string } {
 
 export function CoachPanel({ coach, onChoose, onLevels }: Props) {
   const { drill, lines, status, levels, actions } = coach;
-  const busy=coach.busy||coach.checkingMove;
+  const busy = coach.busy || coach.checkingMove;
   const [move, setMove] = useState("");
+  const [question, setQuestion] = useState(false);
+  const chatting = question || !drill;
   const live = status === "live";
   const prompt = promptFor(coach);
   const hintsLeft = drill ? 3 - drill.hintsGiven : 0;
@@ -50,9 +63,10 @@ export function CoachPanel({ coach, onChoose, onLevels }: Props) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const m = move.trim();
-    if (!m) return;
+    if (!m || (!chatting && busy)) return;
     setMove("");
-    void actions.playTyped(m);
+    if (chatting) void actions.sendMessage(m);
+    else void actions.playTyped(m);
   };
 
   return (
@@ -76,7 +90,7 @@ export function CoachPanel({ coach, onChoose, onLevels }: Props) {
           <button type="button" className="btn" onClick={() => void actions.startDrill(drill.tag)} disabled={busy}>
             Next position
           </button>
-        ) : coach.lastShown && coach.shownTag && coach.shownTag !== "time_trouble" ? (
+        ) : coach.lastShown && coach.shownTag ? (
           <button type="button" className="btn btn-primary" onClick={() => actions.openExample(coach.shownTag!, coach.lastShown!)}>
             Drill this position
           </button>
@@ -102,24 +116,34 @@ export function CoachPanel({ coach, onChoose, onLevels }: Props) {
         />
       </div>
 
+      {drill?.clock?.status === "running" && (
+        <p className="coach-clock-reminder">
+          Time left <strong className="num">{Math.ceil(clockRemaining(drill.clock, coach.clockNow) / 1000)}s</strong> · Submit your move to
+          stop the clock.
+        </p>
+      )}
       <form className="move-form" onSubmit={submit}>
         <label htmlFor="move-input" className="sr-only">
-          Your move
+          {chatting ? "Message your coach" : "Your move"}
         </label>
         <input
           id="move-input"
           className="input"
           value={move}
           onChange={(e) => setMove(e.target.value)}
-          placeholder={drill ? "Type a move, e.g. Nf3 or knight f3" : "Open a drill to type moves"}
+          placeholder={chatting ? "Ask your coach a question" : "Type a move, e.g. Nf3 or knight f3"}
           autoComplete="off"
           spellCheck={false}
-          disabled={!drill || busy}
         />
-        <button type="submit" className="btn btn-primary" disabled={!drill || busy || !move.trim()}>
-          Play
+        <button type="submit" className="btn btn-primary" disabled={(!chatting && busy) || !move.trim()}>
+          {chatting ? "Send" : "Play"}
         </button>
       </form>
+      {drill && (
+        <button type="button" className="linkish composer-mode" onClick={() => setQuestion(!question)}>
+          {question ? "Type a move instead" : "Ask coach a question"}
+        </button>
+      )}
     </section>
   );
 }
