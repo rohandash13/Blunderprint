@@ -111,31 +111,31 @@ public class AnalysisService {
                 WinChance.drop(rs.getInt("best_score"), -rs.getInt("after_score")),
                 (Integer) rs.getObject("clock_cs")), run);
 
-        for (Scored s : rows) {
-            jdbc.update("""
+        jdbc.batchUpdate("""
                 insert into move_analysis(move_id, cpl, best_uci, win_drop) values (?, ?, ?, ?)
                 on conflict (move_id) do update set cpl = excluded.cpl, best_uci = excluded.best_uci,
                     win_drop = excluded.win_drop
-                """, s.moveId(), s.cpl(), s.bestUci(), s.winDrop());
-        }
+                """, rows, MODEL_BATCH, (ps, s) -> {
+                    ps.setLong(1, s.moveId());
+                    ps.setInt(2, s.cpl());
+                    ps.setString(3, s.bestUci());
+                    ps.setDouble(4, s.winDrop());
+                });
         for (int i = 0; i < rows.size(); i += MODEL_BATCH) {
             List<MoveIn> batch = new ArrayList<>();
             for (Scored s : rows.subList(i, Math.min(rows.size(), i + MODEL_BATCH))) {
                 batch.add(new MoveIn(s.moveId(), s.fen(), s.rating(), s.playedUci(), s.bestUci(), s.bestPv(), s.cpl(),
                     s.clockCs()));
             }
-            for (MoveOut o : model.analyze(batch)) {
-                jdbc.update(con -> {
-                    var ps = con.prepareStatement("update move_analysis set p_played = ?, tags = ?, p_best = ?, best_quiet = ?, best_free_material = ? where move_id = ?");
+            jdbc.batchUpdate("update move_analysis set p_played = ?, tags = ?, p_best = ?, best_quiet = ?, best_free_material = ? where move_id = ?",
+                model.analyze(batch), MODEL_BATCH, (ps, o) -> {
                     ps.setDouble(1, o.pPlayed());
-                    ps.setArray(2, con.createArrayOf("text", o.tags().toArray()));
+                    ps.setArray(2, ps.getConnection().createArrayOf("text", o.tags().toArray()));
                     ps.setObject(3, o.pBest(), java.sql.Types.DOUBLE);
                     ps.setObject(4, o.bestQuiet(), java.sql.Types.BOOLEAN);
                     ps.setObject(5, o.bestFreeMaterial(), java.sql.Types.BOOLEAN);
                     ps.setLong(6, o.id());
-                    return ps;
                 });
-            }
         }
         traceCandidates(run);
         return rows.size();

@@ -97,6 +97,32 @@ class AnalysisServiceIT extends PostgresIT {
     }
 
     @Test
+    void rescorePersistsEveryMoveAcrossModelBatchBoundaryAndRemainsIdempotent() {
+        UUID run = seed();
+        jdbc.update("update analysis_run set status = 'DONE' where id = ?", run);
+        jdbc.update("""
+            insert into move(run_id,game_id,ply,fullmove,mover,rating,before_fen,before_key,after_key,played_uci,played_san)
+            select ?, 'g1', n, n+1, 'w', 1500, 'A 0 1', 'A', 'B', 'e2e4', 'e4'
+            from generate_series(1,299) n
+            """, run);
+        jdbc.update("insert into eval_cache(fen_key,engine,depth,best_uci,score_cp) values ('A','sf',10,'d2d4',30),('B','sf',10,'e7e5',200)");
+        when(model.analyze(anyList())).thenAnswer(inv -> {
+            List<ModelClient.MoveIn> in = inv.getArgument(0);
+            return in.stream().map(m -> new ModelClient.MoveOut(m.id(),0.1,List.of("opening_error"),0.3,true,false)).toList();
+        });
+        for (int attempt = 0; attempt < 2; attempt++) {
+            assertEquals(300, analysis.rescoreLatest("u").getAsInt());
+            assertEquals(300, jdbc.queryForObject("""
+                select count(*) from move_analysis where cpl=230 and best_uci='d2d4'
+                and p_played=0.1 and p_best=0.3 and tags=array['opening_error']::text[]
+                and best_quiet=true and best_free_material=false
+                """, Integer.class));
+            assertEquals("DONE", analysis.progress(run).status());
+        }
+        verify(tracer, never()).trace(anyString(), anyString());
+    }
+
+    @Test
     void tickWaitsWhileEvalsAreOutstanding() {
         UUID run = seed();
         jdbc.update("insert into eval_cache(fen_key, engine, depth, score_cp) values ('A','sf',10,30)");
