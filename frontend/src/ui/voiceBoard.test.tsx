@@ -8,12 +8,13 @@ import type { Report } from "../types";
 const mocks = vi.hoisted(() => ({
   send: vi.fn(),
   respond: vi.fn(),
-  callbacks: null as null | { onEvent(e: unknown): void; onClose(reason: string): void },
+  callbacks: null as null | { onEvent(e: unknown): void; onClose(reason: string): void; onAudio(chunk: ArrayBuffer): void },
   settings: [] as any[],
   closed: vi.fn(),
   micStart: vi.fn(async () => {}),
   introduce: vi.fn(),
   updatePrompt: vi.fn(),
+  playbackRemaining: 0,
   board: null as any,
 }));
 vi.mock("../voice/agentSocket", () => ({
@@ -37,6 +38,9 @@ vi.mock("../voice/audio", () => ({
     stop = () => {};
   },
   Player: class {
+    get remainingMs() {
+      return mocks.playbackRemaining;
+    }
     resume = async () => {};
     play = () => {};
     stop = () => {};
@@ -140,6 +144,7 @@ beforeEach(() => {
   mocks.micStart.mockClear();
   mocks.introduce.mockClear();
   mocks.updatePrompt.mockClear();
+  mocks.playbackRemaining = 0;
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -206,8 +211,8 @@ it("plays a legal typed move directly while voice is active, then gives verified
     target: { value: "Qc2" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Play" }));
-  await waitFor(() => expect(mocks.send).toHaveBeenCalledWith(expect.stringContaining("Verified move result")), { timeout: 3000 });
-  expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b");
+  await waitFor(() => expect(mocks.introduce).toHaveBeenCalledWith(expect.stringContaining("stronger move")), { timeout: 3000 });
+  expect(mocks.board.position).toBe(fen);
   const requests = vi.mocked(fetch).mock.calls.length;
   await act(async () =>
     mocks.callbacks?.onEvent({
@@ -234,9 +239,9 @@ it("allows a legal piece drop and rejects an illegal one through the same board 
   expect(mocks.board.arePiecesDraggable).toBe(true);
   expect(mocks.board.onPieceDrop("d1", "d8", "wQ")).toBe(false);
   await act(async () => {
-    expect(mocks.board.onPieceDrop("d1", "c2", "wQ")).toBe(true);
+    expect(mocks.board.onPieceDrop("d1", "e2", "wQ")).toBe(true);
   });
-  expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b");
+  expect(mocks.board.position).toContain("PB1NQPPP/R4RK1 b");
 });
 
 it("shows legal destination dots on click and supports click-to-move", async () => {
@@ -246,21 +251,29 @@ it("shows legal destination dots on click and supports click-to-move", async () 
   await act(async () => mocks.board.onSquareClick("d1", "wQ"));
   expect(mocks.board.customSquareStyles.c2.backgroundImage).toContain("radial-gradient");
   expect(mocks.board.customSquareStyles.d8).toBeUndefined();
-  await act(async () => mocks.board.onSquareClick("c2", undefined));
-  expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b");
+  await act(async () => mocks.board.onSquareClick("e2", undefined));
+  expect(mocks.board.position).toContain("PB1NQPPP/R4RK1 b");
   expect(mocks.board.customSquareStyles.c2?.backgroundImage).toBeUndefined();
 });
 
 it("reviews the attempted move on the board and returns to a hidden-answer retry", async () => {
+  vi.mocked(fetch).mockImplementation(
+    async () =>
+      new Response(JSON.stringify({ bestUci: "e4f2", scoreCp: 100, pv: ["e4f2"] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+  );
   await load();
   fireEvent.click(screen.getByRole("button", { name: "Drill this pattern" }));
   await screen.findByLabelText("Chessboard");
   await act(async () => mocks.board.onPieceDrop("d1", "c2", "wQ"));
-  const review = await screen.findByRole("button", { name: "Review my move" });
+  const review = await screen.findByRole("button", { name: "See why" });
   fireEvent.click(review);
-  await waitFor(() => expect(mocks.board.position).toBe(fen));
+  await waitFor(() => expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b"));
+  await waitFor(() => expect((screen.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
-  await waitFor(() => expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b"), { timeout: 2500 });
+  await waitFor(() => expect(mocks.board.position).not.toContain("PBQN1PPP/R4RK1 b"), { timeout: 2500 });
   await waitFor(() => expect((screen.getByRole("button", { name: "Try again" }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   await waitFor(() => expect(mocks.board.position).toBe(fen));
@@ -320,6 +333,63 @@ it("introduces the coach in the current drill without restarting a profile overv
   expect(mocks.updatePrompt).toHaveBeenCalledWith(expect.stringContaining("Do not switch to a profile overview"));
   expect(mocks.settings[0].agent.greeting).toBeUndefined();
   expect(mocks.board.position).toBe(position);
+});
+
+it("speaks each ply and blocks chained tool calls until playback finishes and the player asks again", async () => {
+  vi.mocked(fetch).mockImplementation(
+    async (url) =>
+      new Response(
+        JSON.stringify(
+          String(url).includes("/voice/token") ? { token: "test" } : { bestUci: "e4f2", scoreCp: 100, pv: ["e4f2", "f1f2", "f6h4"] },
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+  );
+  await load();
+  fireEvent.click(screen.getByRole("button", { name: "Drill this pattern" }));
+  await screen.findByLabelText("Chessboard");
+  fireEvent.click(screen.getByRole("button", { name: "Start voice" }));
+  await screen.findByRole("button", { name: "Stop voice" });
+  fireEvent.change(screen.getByLabelText("Your move"), { target: { value: "Qe2" } });
+  fireEvent.click(screen.getByRole("button", { name: "Play" }));
+  await waitFor(() => expect(mocks.introduce.mock.calls.at(-1)?.[0]).toContain("best move"), { timeout: 2500 });
+  const finishSpeech = async () => {
+    const text = mocks.introduce.mock.calls.at(-1)![0];
+    await act(async () => {
+      mocks.callbacks?.onEvent({ type: "ConversationText", role: "assistant", content: text });
+      mocks.callbacks?.onAudio(new ArrayBuffer(4800));
+      mocks.callbacks?.onEvent({ type: "AgentAudioDone" });
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 100));
+    });
+  };
+  await finishSpeech();
+  const callNext = async (id: string) => {
+    await act(async () =>
+      mocks.callbacks?.onEvent({ type: "FunctionCallRequest", functions: [{ id, name: "next_move", arguments: "{}", client_side: true }] }),
+    );
+    await waitFor(() => expect(mocks.respond.mock.calls.some((c) => c[0] === id)).toBe(true), { timeout: 2500 });
+  };
+  await act(async () => mocks.callbacks?.onEvent({ type: "ConversationText", role: "user", content: "Next" }));
+  await callNext("first");
+  const position = mocks.board.position;
+  await callNext("chained");
+  expect(mocks.board.position).toBe(position);
+  expect(JSON.parse(mocks.respond.mock.calls.find((c) => c[0] === "chained")![2]).waitingForPlayer).toBe(true);
+  mocks.playbackRemaining = 800;
+  await finishSpeech();
+  await callNext("still-playing");
+  expect(mocks.board.position).toBe(position);
+  mocks.playbackRemaining = 0;
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 100));
+  });
+  await callNext("no-new-request");
+  expect(mocks.board.position).toBe(position);
+  await act(async () => mocks.callbacks?.onEvent({ type: "ConversationText", role: "user", content: "Show the next move" }));
+  await callNext("requested");
+  expect(mocks.board.position).not.toBe(position);
 });
 
 it("can begin a typed conversation without microphone permission or starting voice", async () => {
@@ -385,7 +455,7 @@ it("opens time trouble from Choose focus, counts down, expires and permits untim
     await act(async () => {
       expect(mocks.board.onPieceDrop("d1", "c2", "wQ")).toBe(true);
     });
-    expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b");
+    expect(mocks.board.position).toBe(fen);
   } finally {
     report.patterns = originalPatterns;
     profile.patterns = originalProfilePatterns;
@@ -407,9 +477,10 @@ it("accepts a spoken timed move as soon as its legal transcript arrives, before 
     fireEvent.click(await screen.findByRole("button", { name: "Start voice" }));
     await screen.findByRole("button", { name: "Stop voice" });
     fireEvent.click(screen.getByRole("button", { name: "Start clock" }));
+    await waitFor(()=>expect(mocks.board.arePiecesDraggable).toBe(true));
     await act(async () => mocks.callbacks?.onEvent({ type: "ConversationText", role: "user", content: "Queen see two" }));
     await waitFor(() => expect(document.querySelector(".decision-clock.is-submitted")).toBeTruthy());
-    await waitFor(() => expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b"), { timeout: 2500 });
+    await waitFor(() => expect(mocks.board.position).toBe(fen), { timeout: 2500 });
   } finally {
     report.patterns = prior;
     profile.patterns = priorProfile;

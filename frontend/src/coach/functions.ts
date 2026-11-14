@@ -34,7 +34,7 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   {
     name: "review_attempt",
     description:
-      "When the player asks where they went wrong, why their attempted move failed, or to revisit the mistake, return the board to that attempted move and queue its verified continuation. Call next_move to show and explain each ply, then retry_position after the consequence has been explained. Never invent a reply or reveal the hidden best move.",
+      "Use only when the player explicitly asks See why or why their attempt was wrong. Show the attempted move and let the app explain it. Only the first reply is queued. Wait for the player to request that reply; do not chain next_move calls or reveal the answer.",
     parameters: NO_ARGS,
   },
   {
@@ -93,7 +93,7 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   {
     name: "play_move",
     description:
-      "Play the move the player said as an attempt at the current drill. Only the player's move is shown; the engine's continuation waits for next_move. Returns a verdict (best, repeated_mistake, other, illegal) computed by code, the player's move as facts, the first reply as next, and an eval from the player's side. Wrong attempts never reveal the answer. Attempts are unlimited.",
+      "Validate the player's drill attempt using code. A wrong attempt returns to the original position for another try; offer review_attempt only if the player asks why. A best move stays on the board with a reply available on a separate request. The app speaks verified feedback. Never automatically continue a wrong line or reveal the answer. Attempts are unlimited.",
     parameters: {
       type: "object",
       properties: { move: { type: "string", description: "The move exactly as the player said it, e.g. 'knight f3' or 'Nf3'" } },
@@ -115,10 +115,10 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   {
     name: "explain_line",
     description:
-      "Play the engine's best line out on the board and return per-move facts (captures, checks, forks, material). Use when the player asks why a move is best; explain using only the returned facts.",
+      "When the player explicitly asks to see the best line, show its first move only. The app speaks verified facts. Further plies require a separate next request. During an unsolved mistake review use review_attempt instead.",
     parameters: {
       type: "object",
-      properties: { plies: { type: "integer", description: "How many moves to play out (default 6)" } },
+        properties: { plies: { type: "integer", description: "Maximum continuation length to prepare (default 6); only the first move is shown now" } },
     },
   },
   {
@@ -165,7 +165,7 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   {
     name: "next_move",
     description:
-      "Show the next move of the line after play_move or try_move: one move at a time, with an arrow. Returns that move's facts and a caption; explain only that move in one sentence. Call again until done is true, unless the player interrupts. The eval comes with the last move.",
+      "Show exactly one next move, only when the player requests next or show the reply. The app speaks its verified explanation. Wait for playback and a new user request before another move. Mistake review stops after the first reply; offer Try again and wait.",
     parameters: NO_ARGS,
   },
 ];
@@ -563,6 +563,24 @@ async function playMove(args: Record<string, unknown>, state: CoachState, fx: Co
   const next = holdLine(state, ex.fen, mine, play, you, solved, !solved);
   if (!solved) {
     d.lastAttempt = { mine, line: play.line, evalSpoken: play.evalSpoken, verdict: j.verdict };
+    state.pending = null;
+    d.exploreFen = ex.fen;
+    d.awaitingReply = false;
+    fx.showPosition(ex.fen);
+    return {
+      verdict: j.verdict,
+      spoken,
+      attempts: d.attempts,
+      hintsGiven: d.hintsGiven,
+      hintsRemaining: 3 - d.hintsGiven,
+      facts,
+      lineLength: 0,
+      next: null,
+      reviewAvailable: true,
+      ...("note" in play ? { note: play.note } : {}),
+      instruction:
+        "The board is back at the drill. Ask the player to try again, or offer See why. Do not play or describe a variation unless they explicitly ask why.",
+    };
   }
   d.awaitingReply = sideToMove(play.finalFen) !== you;
   if (solved) {
@@ -624,6 +642,7 @@ function revealAnswer(state: CoachState, fx: CoachEffects) {
 async function explainLine(args: Record<string, unknown>, state: CoachState, fx: CoachEffects) {
   const ex = state.drill?.example ?? state.lastShown;
   if (!ex) return NO_DRILL;
+  if (state.drill?.lastAttempt && !state.drill.solved && !state.drill.revealed) return reviewAttempt(state, fx);
   if (state.drill?.clock) {
     state.drill.clock.status = "untimed";
     state.drill.clock.deadline = null;
@@ -635,14 +654,21 @@ async function explainLine(args: Record<string, unknown>, state: CoachState, fx:
   if (line.length === 0) {
     return { error: "No engine line is available for this position. Say so; do not explain from memory." };
   }
-  await fx.animateLine(
-    ex.fen,
-    line.map((f) => f.uci),
-    BEST,
-  );
+  fx.showPosition(ex.fen);
+  state.pending = {
+    base: ex.fen,
+    fens: [ex.fen, ...line.slice(0, -1).map((f) => f.fenAfter)],
+    plies: line,
+    you: sideToMove(ex.fen),
+    next: 0,
+    evalSpoken: null,
+    follow: true,
+  };
+  const displayed = await nextMove(state, fx);
   const before = material(ex.fen).diff;
   return {
-    line: line.map((f, i) => ({
+    ...displayed,
+    line: line.slice(0, 1).map((f, i) => ({
       ply: i + 1,
       side: f.side,
       spoken: f.spoken,
@@ -651,7 +677,7 @@ async function explainLine(args: Record<string, unknown>, state: CoachState, fx:
       fork: f.fork,
     })),
     materialBefore: before,
-    materialAfter: line[line.length - 1].materialAfter,
+    materialAfter: line[0].materialAfter,
     note: "Explain using only these facts.",
   };
 }
@@ -704,13 +730,13 @@ async function nextMove(state: CoachState, fx: CoachEffects) {
       ? {
           retryAvailable: true,
           instruction:
-            "Explain this displayed consequence, then call retry_position and ask the player to try again. Do not reveal the best move.",
+            "The first reply ends this review. Offer Try again and wait for the player to choose it. Do not continue deeper or reveal the best move.",
         }
       : {}),
   };
 }
 
-function reviewAttempt(state: CoachState, fx: CoachEffects) {
+async function reviewAttempt(state: CoachState, fx: CoachEffects) {
   const d = state.drill,
     attempt = d?.lastAttempt;
   if (!d || !attempt) return { error: "No attempted mistake is available to review yet. Ask the player to try a move first." };
@@ -718,12 +744,12 @@ function reviewAttempt(state: CoachState, fx: CoachEffects) {
     d.clock.status = "untimed";
     d.clock.deadline = null;
   }
-  const plies = [attempt.mine, ...attempt.line];
+  const plies = attempt.line.slice(0, 1);
   d.exploreFen = d.example.fen;
   d.awaitingReply = false;
   state.pending = {
     base: d.example.fen,
-    fens: [d.example.fen, ...plies.slice(0, -1).map((move) => move.fenAfter)],
+    fens: [attempt.mine.fenAfter],
     plies,
     you: sideToMove(d.example.fen),
     next: 0,
@@ -731,15 +757,17 @@ function reviewAttempt(state: CoachState, fx: CoachEffects) {
     follow: false,
     retryAvailable: true,
   };
-  fx.showPosition(d.example.fen, [arrow(attempt.mine.uci, PLAYED)]);
+  fx.showPosition(d.example.fen);
+  await fx.flashMove(d.example.fen, attempt.mine.uci);
+  if (plies.length === 0) state.pending = null;
   return {
-    status: "Back at your attempted move. Let's review what happened, one move at a time.",
+    status: `Your attempted move was ${attempt.mine.spoken}. ${plies.length ? "Say show the reply, or press Next, to see why it matters." : "No engine reply is available, so I cannot show a continuation. Try again or ask for a hint."}`,
     playedSpoken: attempt.mine.spoken,
     verdict: attempt.verdict,
     lineLength: plies.length,
-    next: plyOut(state.pending, 0),
+    next: state.pending ? plyOut(state.pending, 0) : null,
     instruction:
-      "Call next_move before describing each move. Explain only its returned facts. At the end call retry_position, with the best move still hidden.",
+      "Only the attempted move is shown. Wait for the player to request the first reply. That single reply ends the review; offer Try again instead of continuing deeper.",
   };
 }
 

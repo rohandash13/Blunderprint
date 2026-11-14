@@ -42,6 +42,11 @@ function promptFor(coach: Coach): { head: string; body: string } {
       head: "Answer shown",
       body: "Green is the best move, red is your game move. Try the line yourself, or go on to the next position.",
     };
+  if (d.lastAttempt && coach.fen === d.example.fen && !coach.pendingLeft)
+    return {
+      head: "Try another move",
+      body: "The board is back at the original position. Choose See why if you'd like to examine the first reply before trying again.",
+    };
   const note = difficultyNote(d.example.level, d.example.kind);
   return {
     head: `${side} to move. What would you play?`,
@@ -51,7 +56,7 @@ function promptFor(coach: Coach): { head: string; body: string } {
 
 export function CoachPanel({ coach, onChoose, onLevels }: Props) {
   const { drill, lines, status, levels, actions } = coach;
-  const busy = coach.busy || coach.checkingMove;
+  const busy = coach.busy || coach.checkingMove || coach.narrating;
   const [move, setMove] = useState("");
   const [question, setQuestion] = useState(false);
   const chatting = question || !drill;
@@ -76,6 +81,7 @@ export function CoachPanel({ coach, onChoose, onLevels }: Props) {
         <p>{prompt.body}</p>
       </div>
 
+      {coach.narrating && <p className="form-note" role="status">The coach is explaining this move. Wait before continuing, or speak to interrupt.</p>}
       <div className="coach-actions">
         <button type="button" className="btn" onClick={actions.hint} disabled={!open || hintsLeft === 0 || busy}>
           Hint {drill && <span className="num muted">{hintsLeft} left</span>}
@@ -93,7 +99,7 @@ export function CoachPanel({ coach, onChoose, onLevels }: Props) {
         </button>
         {drill?.lastAttempt && (
           <button type="button" className="btn" disabled={busy} onClick={() => void actions.reviewAttempt()}>
-            Review my move
+            See why
           </button>
         )}
         {drill ? (

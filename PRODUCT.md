@@ -48,7 +48,7 @@ drill for a 1200.
   (tactical / positional).
 - Coach functions: report, show mistake, drill, play move, hint ladder (idea → piece → square), reveal, explain
   line, try a move, reset, change levels, step through a line.
-- Lines play coach-paced: one move at a time with an arrow and a one-sentence explanation, then the next.
+- Lines advance only on a player request. With voice on, each move's verified explanation must finish streaming and playing before another move. A wrong attempt returns to the original position; See why reopens it, and a separate reply request shows only the first engine reply before offering another try.
 - Public demo limits: analysis of ~40 recent games per username, one at a time, daily cap; voice tokens
   rate-limited; admin endpoints closed.
 - Terminology: "slip / tricky / deep" for difficulty; "patterns" for recurring mistake types; "drill" for
