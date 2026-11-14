@@ -3,6 +3,11 @@ import { DEFAULT_CONFIG, KEYTERMS, buildSettings } from "./settings";
 
 describe("buildSettings", () => {
   const s = buildSettings(DEFAULT_CONFIG, "alice") as any;
+  it("separates plain spoken language from visual transcript formatting", () => {
+    expect(s.agent.think.prompt).toContain("Never output Markdown");
+    expect(s.agent.think.prompt).toContain("Name: explanation");
+    expect(s.agent.think.prompt).toContain("Do not say Coach");
+  });
   it("leaves legality to code and narrates verified UI moves without replaying them", () => {
     expect(s.agent.think.prompt).toContain("Never reject a move without calling play_move");
     expect(s.agent.think.prompt).toContain("appNarrated true");

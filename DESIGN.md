@@ -48,6 +48,8 @@ Typed and dropped moves are validated against the visible board before the voice
 
 The wallchart has an initially open, collapsible guide above the games. It explains rows/columns, hollow/filled/red/dashed marks, cost-based size, outer rings, game-header piece colors, yellow selections and score symbols. These visual examples use the same mark styles as the chart.
 
+Consecutive coach fragments share one speaker label. Habit summaries use semantic lists with bold pattern names and descriptions beneath them. Spoken output uses plain language with no Markdown or numbered markers; display formatting is applied separately. Previously saved bold-markup lists are rendered safely as text and semantic elements, without injecting HTML. User messages remain literal.
+
 Motion follows the paper-and-ink material: marks settle onto the chart when revealed, level highlights and controls give short feedback, and the conversation panel unfolds with a bounded clip/filter transition and a faster exit. Reduced-motion preferences remove spatial effects and board animation while retaining brief color/opacity feedback.
 
 ## Finish record

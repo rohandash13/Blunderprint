@@ -1891,6 +1891,30 @@ input {
   font-weight: 700;
 }
 
+.line-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.line-text > * + * {
+  margin-top: var(--s2);
+}
+
+.coach-habits {
+  display: grid;
+  gap: 12px;
+  padding-block: var(--s1);
+}
+
+.coach-habits li {
+  display: grid;
+  gap: 2px;
+}
+
+.coach-habits strong {
+  font-weight: 750;
+}
+
 .move-form {
   display: flex;
   gap: var(--s2);
