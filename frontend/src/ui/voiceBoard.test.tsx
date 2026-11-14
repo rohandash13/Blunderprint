@@ -331,8 +331,10 @@ it("introduces the coach in the current drill without restarting a profile overv
   expect(mocks.introduce).toHaveBeenCalledWith(expect.stringContaining("I'm your Blunderprint coach"));
   expect(mocks.introduce).toHaveBeenCalledWith(expect.stringContaining("this position"));
   expect(mocks.updatePrompt).toHaveBeenCalledWith(expect.stringContaining("Do not switch to a profile overview"));
-  expect(mocks.updatePrompt).toHaveBeenCalledWith(expect.stringContaining("Never output Markdown"));
-  expect(mocks.updatePrompt).toHaveBeenCalledWith(expect.stringContaining("Never chain next_move calls"));
+  expect(mocks.settings[0].agent.think.prompt).toContain("Never output Markdown");
+  expect(mocks.settings[0].agent.think.prompt).toContain("Never chain next_move calls");
+  expect(mocks.updatePrompt).not.toHaveBeenCalledWith(expect.stringContaining("Never output Markdown"));
+  expect(mocks.updatePrompt).not.toHaveBeenCalledWith(expect.stringContaining("Never chain next_move calls"));
   expect(mocks.settings[0].agent.greeting).toBeUndefined();
   expect(mocks.board.position).toBe(position);
 });

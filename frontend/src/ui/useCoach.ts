@@ -5,7 +5,7 @@ import { BEST, handleFunctionCall, newCoachState, openPosition, PLAYED, type Arr
 import { spokenMove } from "../chess/facts";
 import { AnimationQueue } from "../coach/animQueue";
 import { LineHistory, type StepDirection } from "../coach/lineHistory";
-import { DEFAULT_CONFIG, buildSettings, coachPrompt } from "../voice/settings";
+import { DEFAULT_CONFIG, buildSettings } from "../voice/settings";
 import { AgentSocket, type AgentEvent } from "../voice/agentSocket";
 import { Mic, Player } from "../voice/audio";
 import { cleanUserLine } from "../voice/transcript";
@@ -546,7 +546,8 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
       }
       setStatus("live");
       const onboarding = voiceOnboarding(coach.current);
-      agent.updatePrompt(`${coachPrompt(userRef.current)}\n${onboarding.context}`);
+      // UpdatePrompt appends to the initial instructions; send only the latest context.
+      agent.updatePrompt(onboarding.context);
       agent.injectAgentMessage(onboarding.introduction);
     } catch (err) {
       capture?.stop();

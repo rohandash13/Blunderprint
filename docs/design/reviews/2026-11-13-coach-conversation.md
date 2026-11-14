@@ -10,3 +10,5 @@ Regression coverage includes fragmented numbered responses, plain spoken labels,
 ![Habit response on phone](coach-conversation/habits-mobile.png)
 
 The replacement video uses the builder's supplied recording for narration and spoken questions, with actual live coach audio; the earlier generated-presenter video is superseded.
+
+Validation: 226 frontend tests pass, the production build passes and Impeccable reports no findings. The spoken habit test also passed on the deployed Vercel app, including the bold list and phone overflow check. Voice-start updates send only the new context: Deepgram's UpdatePrompt appends to the existing instructions, so repeating the entire base prompt would unnecessarily grow the session. A regression test checks both the initial full rules and bounded updates.
