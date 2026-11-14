@@ -1,7 +1,7 @@
 package com.blunderprint.worker;
 
 import com.blunderprint.engine.EngineResult;
-import com.blunderprint.engine.StockfishEngine;
+import com.blunderprint.engine.EnginePool;
 import com.blunderprint.store.Job;
 import com.blunderprint.store.JobQueueRepository;
 import jakarta.annotation.PostConstruct;
@@ -21,7 +21,7 @@ public class WorkerPool {
     private static final Logger log = LoggerFactory.getLogger(WorkerPool.class);
 
     private final JobQueueRepository queue;
-    private final String enginePath;
+    private final EnginePool engines;
     private final int defaultCount;
     private final boolean autostart;
     private final int reaperTimeoutSeconds;
@@ -48,8 +48,7 @@ public class WorkerPool {
         jobsDone.reset();
     }
 
-    public WorkerPool(JobQueueRepository queue,
-                      @Value("${engine.path}") String enginePath,
+    public WorkerPool(JobQueueRepository queue, EnginePool engines,
                       @Value("${workers.count}") int defaultCount,
                       @Value("${workers.autostart}") boolean autostart,
                       @Value("${workers.reaper-timeout-seconds}") int reaperTimeoutSeconds,
@@ -57,7 +56,7 @@ public class WorkerPool {
                       @Value("${workers.batch-size:4}") int batchSize) {
         this.batchSize = batchSize;
         this.queue = queue;
-        this.enginePath = enginePath;
+        this.engines = engines;
         this.defaultCount = defaultCount;
         this.autostart = autostart;
         this.reaperTimeoutSeconds = reaperTimeoutSeconds;
@@ -100,7 +99,6 @@ public class WorkerPool {
     }
 
     private void loop(String workerId) {
-        StockfishEngine engine = null;
         try {
             while (running) {
                 long c0 = System.nanoTime();
@@ -113,16 +111,13 @@ public class WorkerPool {
                 List<JobQueueRepository.Completed> done = new ArrayList<>();
                 for (Job job : jobs) {
                     try {
-                        if (engine == null) engine = new StockfishEngine(enginePath);
                         long e0 = System.nanoTime();
-                        EngineResult r = engine.analyze(job.fenKey(), job.depth());
+                        EngineResult r = engines.execute(engine -> engine.analyze(job.fenKey(), job.depth()));
                         engineNs.add(System.nanoTime() - e0);
                         done.add(new JobQueueRepository.Completed(job, r));
                     } catch (Exception e) {
                         log.warn("{} failed job {}: {}", workerId, job.id(), e.toString());
                         queue.fail(job.id(), String.valueOf(e), maxAttempts);
-                        if (engine != null) engine.close();
-                        engine = null;
                     }
                 }
                 long w0 = System.nanoTime();
@@ -132,8 +127,6 @@ public class WorkerPool {
             }
         } catch (InterruptedException ignored) {
             // stop requested
-        } finally {
-            if (engine != null) engine.close();
         }
     }
 }

@@ -11,8 +11,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /build/target/backend-0.1.0.jar /app/app.jar
+COPY entrypoint.sh /app/entrypoint.sh
 ENV STOCKFISH_PATH=/usr/games/stockfish \
+    ENGINE_MAX_PROCESSES=1 \
     ENGINE_VERSION=sf-debian \
-    JAVA_OPTS="-Xmx320m -XX:+UseSerialGC"
+    JAVA_OPTS="-XX:+UseSerialGC"
 EXPOSE 8080
-ENTRYPOINT ["sh","-c","java $JAVA_OPTS -jar /app/app.jar"]
+ENTRYPOINT ["sh","/app/entrypoint.sh"]

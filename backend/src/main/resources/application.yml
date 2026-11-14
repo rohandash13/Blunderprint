@@ -14,6 +14,7 @@ spring:
   config:
     import: "optional:file:.env[.properties],optional:file:../.env[.properties]"
 engine:
+  max-processes: ${ENGINE_MAX_PROCESSES:8}
   path: ${STOCKFISH_PATH:stockfish}
   version: ${ENGINE_VERSION:stockfish-local}
   depth: 12

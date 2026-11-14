@@ -19,7 +19,8 @@ public class StockfishEngine implements AutoCloseable {
         send("uci");
         waitFor("uciok");
         send("setoption name Threads value 1");
-        send("setoption name Hash value 64");
+        // The worker, live analyzer and difficulty tracer may all be resident together.
+        send("setoption name Hash value 16");
         send("isready");
         waitFor("readyok");
     }
@@ -130,5 +131,13 @@ public class StockfishEngine implements AutoCloseable {
     public void close() {
         try { send("quit"); } catch (IOException ignored) { }
         process.destroy();
+        try {
+            if (!process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly().waitFor();
+            }
+        } catch (InterruptedException e) {
+            process.destroyForcibly();
+            Thread.currentThread().interrupt();
+        }
     }
 }
