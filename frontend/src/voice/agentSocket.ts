@@ -71,6 +71,14 @@ export class AgentSocket {
     this.sendJson({ type: "InjectUserMessage", content });
   }
 
+  injectAgentMessage(message: string): void {
+    this.sendJson({ type: "InjectAgentMessage", message, behavior: "interrupt" });
+  }
+
+  updatePrompt(prompt: string): void {
+    this.sendJson({ type: "UpdatePrompt", prompt });
+  }
+
   close(): void {
     this.closedByUser = true;
     if (this.timer) clearInterval(this.timer);

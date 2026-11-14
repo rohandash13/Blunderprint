@@ -83,9 +83,19 @@ export function CoachPanel({ coach, onChoose, onLevels }: Props) {
         <button type="button" className="btn" onClick={actions.reveal} disabled={!open || busy}>
           Reveal
         </button>
-        <button type="button" className="btn" onClick={actions.reset} disabled={!drill || busy}>
-          Reset
+        <button
+          type="button"
+          className="btn"
+          onClick={drill?.lastAttempt && !drill.solved ? () => void actions.retryPosition() : actions.reset}
+          disabled={!drill || busy}
+        >
+          {drill?.lastAttempt && !drill.solved ? "Try again" : "Reset"}
         </button>
+        {drill?.lastAttempt && (
+          <button type="button" className="btn" disabled={busy} onClick={() => void actions.reviewAttempt()}>
+            Review my move
+          </button>
+        )}
         {drill ? (
           <button type="button" className="btn" onClick={() => void actions.startDrill(drill.tag)} disabled={busy}>
             Next position
