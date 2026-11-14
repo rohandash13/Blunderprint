@@ -33,5 +33,9 @@ services:
         value: "true"
       - key: WORKERS_COUNT
         value: "1"
+      - key: ENGINE_MAX_PROCESSES
+        value: "1"
       - key: JAVA_OPTS
-        value: "-Xmx320m -XX:+UseSerialGC"
+        value: "-XX:+UseSerialGC"
+      - key: JAVA_MAX_HEAP
+        value: "160m"

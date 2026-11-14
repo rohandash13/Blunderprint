@@ -1,0 +1,41 @@
+{
+  "container": "blunderprint-api-memory-baseline",
+  "image": "sha256:b36e0c716970e051d4f27796262fc831f5f239e19dff611b0ed70267ada14eab",
+  "memory_limit_bytes": 536870912,
+  "oom_killed": false,
+  "exit_code": 0,
+  "running": true,
+  "outcomes": {
+    "live_engine": {
+      "bestUci": "b8c6",
+      "scoreCp": -39,
+      "pv": [
+        "b8c6",
+        "d2d4",
+        "e5d4",
+        "f3d4",
+        "g8f6",
+        "c1g5",
+        "h7h6",
+        "g5h4",
+        "d7d5"
+      ]
+    },
+    "rescore": {
+      "rescored": 3874
+    }
+  },
+  "peak_bytes": 536895488,
+  "stockfish_processes": "3",
+  "stats": {
+    "BlockIO": "378MB / 529MB",
+    "CPUPerc": "5.24%",
+    "Container": "blunderprint-api-memory-baseline",
+    "ID": "9becf52ecaa6",
+    "MemPerc": "94.14%",
+    "MemUsage": "482MiB / 512MiB",
+    "Name": "blunderprint-api-memory-baseline",
+    "NetIO": "2.8MB / 2.36MB",
+    "PIDs": "45"
+  }
+}
