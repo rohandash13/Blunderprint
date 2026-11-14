@@ -5,7 +5,7 @@ import { BEST, handleFunctionCall, newCoachState, openPosition, PLAYED, type Arr
 import { spokenMove } from "../chess/facts";
 import { AnimationQueue } from "../coach/animQueue";
 import { LineHistory, type StepDirection } from "../coach/lineHistory";
-import { DEFAULT_CONFIG, buildSettings } from "../voice/settings";
+import { DEFAULT_CONFIG, buildSettings, coachPrompt } from "../voice/settings";
 import { AgentSocket, type AgentEvent } from "../voice/agentSocket";
 import { Mic, Player } from "../voice/audio";
 import { cleanUserLine } from "../voice/transcript";
@@ -19,6 +19,7 @@ import { uciOf } from "../chess/verdict";
 import { clockInputError, expireClock } from "../coach/drillClock";
 import { voiceOnboarding } from "../voice/onboarding";
 import { GuidedPacing, PACED_FUNCTIONS } from "../voice/guidedPacing";
+import { habitSummary } from "./habitSummary";
 
 export const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 export type VoiceStatus = "idle" | "connecting" | "live" | "error";
@@ -96,6 +97,13 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     pacing.current.interrupt();
     setNarrating(false);
   };
+  const speakText = (text: string) => {
+    if (statusRef.current !== "live" || !socket.current) return;
+    player.current?.stop();
+    pacing.current.begin(text);
+    setNarrating(true);
+    socket.current.injectAgentMessage(text);
+  };
   const speakResult = (name: string, result: unknown) => {
     if (statusRef.current !== "live" || !socket.current || !PACED_FUNCTIONS.has(name)) return;
     if (name === "start_clock") return; // Preserve the short decision budget for the player.
@@ -103,10 +111,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     const actualName = result && typeof result === "object" && "yourMove" in result ? "try_move" : name;
     const text = describeResult(actualName, result);
     if (!text) return;
-    player.current?.stop();
-    pacing.current.begin(text);
-    setNarrating(true);
-    socket.current.injectAgentMessage(text);
+    speakText(text);
   };
   const mic = useRef<Mic | null>(null);
   const player = useRef<Player | null>(null);
@@ -409,9 +414,12 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
             result = await run(f.name, args, true);
           }
           if (!cancelled.current.has(f.id)) {
+            const habitText = f.name === "get_report"
+              ? habitSummary([...linesRef.current].reverse().find(line => line.role === "user")?.content ?? "", result)
+              : null;
             const narrated =
               statusRef.current === "live" &&
-              PACED_FUNCTIONS.has(f.name) &&
+              (PACED_FUNCTIONS.has(f.name) || !!habitText) &&
               !(result && typeof result === "object" && "waitingForPlayer" in result);
             s.respond(
               f.id,
@@ -427,7 +435,10 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
                   : result,
               ),
             );
-            if (narrated) speakResult(f.name, result);
+            if (narrated) {
+              if (habitText) speakText(habitText);
+              else speakResult(f.name, result);
+            }
           }
         }
         break;
@@ -535,7 +546,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
       }
       setStatus("live");
       const onboarding = voiceOnboarding(coach.current);
-      agent.updatePrompt(onboarding.context);
+      agent.updatePrompt(`${coachPrompt(userRef.current)}\n${onboarding.context}`);
       agent.injectAgentMessage(onboarding.introduction);
     } catch (err) {
       capture?.stop();

@@ -20,4 +20,8 @@ The browser grants one board action per user turn. A matching injected explanati
 
 Frontend verification: 218 passing tests, production build successful, Impeccable detector returned no findings, and `git diff --check` passed. No backend or model code changed.
 
-Deployment verification is recorded below after rollout. The previous demo MP4 is superseded; replacement editing awaits the user's recorded narration and questions.
+PR #10 deployed as main commit `6261d008cb5ee643239df326f8ab02caf2c3a9ce`. The same four-stage spoken test passed against the public Vercel app, with no browser exceptions or unsolicited moves. The 390px retry capture had no horizontal page overflow. The backend health endpoint returned `ok: true`.
+
+![Deployed phone retry](guided-voice-pacing/retry-mobile.png)
+
+The previous demo MP4 is superseded; replacement editing awaits the user's recorded narration and questions.

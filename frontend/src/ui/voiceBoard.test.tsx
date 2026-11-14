@@ -331,8 +331,38 @@ it("introduces the coach in the current drill without restarting a profile overv
   expect(mocks.introduce).toHaveBeenCalledWith(expect.stringContaining("I'm your Blunderprint coach"));
   expect(mocks.introduce).toHaveBeenCalledWith(expect.stringContaining("this position"));
   expect(mocks.updatePrompt).toHaveBeenCalledWith(expect.stringContaining("Do not switch to a profile overview"));
+  expect(mocks.updatePrompt).toHaveBeenCalledWith(expect.stringContaining("Never output Markdown"));
+  expect(mocks.updatePrompt).toHaveBeenCalledWith(expect.stringContaining("Never chain next_move calls"));
   expect(mocks.settings[0].agent.greeting).toBeUndefined();
   expect(mocks.board.position).toBe(position);
+});
+
+it("speaks a verified habit summary directly without markup and leaves drill report lookups alone", async () => {
+  await load();
+  fireEvent.click(screen.getByRole("button", { name: "Start voice" }));
+  await screen.findByRole("button", { name: "Stop voice" });
+  const requestReport = async (id: string, question: string) => {
+    await act(async () => {
+      mocks.callbacks?.onEvent({ type: "ConversationText", role: "user", content: question });
+      mocks.callbacks?.onEvent({
+        type: "FunctionCallRequest",
+        functions: [{ id, name: "get_report", arguments: "{}", client_side: true }],
+      });
+    });
+    await waitFor(() => expect(mocks.respond.mock.calls.some(call => call[0] === id)).toBe(true));
+    return JSON.parse(mocks.respond.mock.calls.find(call => call[0] === id)![2]);
+  };
+  const result = await requestReport("habits", "What are some of my habits?");
+  expect(result.appNarrated).toBe(true);
+  const summary = mocks.introduce.mock.calls.at(-1)![0];
+  expect(summary).toContain("Positional decisions:");
+  expect(summary).not.toContain("*");
+  expect(summary).toContain("Which would you like to practice?");
+
+  const narrationCount = mocks.introduce.mock.calls.length;
+  const drillReport = await requestReport("drill-report", "Drill my weakest pattern");
+  expect(drillReport.appNarrated).toBeUndefined();
+  expect(mocks.introduce).toHaveBeenCalledTimes(narrationCount);
 });
 
 it("speaks each ply and blocks chained tool calls until playback finishes and the player asks again", async () => {
