@@ -1,12 +1,5 @@
 // @vitest-environment jsdom
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "../App";
 import type { Profile } from "../profile/types";
@@ -15,16 +8,20 @@ import type { Report } from "../types";
 const mocks = vi.hoisted(() => ({
   send: vi.fn(),
   respond: vi.fn(),
-  callbacks: null as null | { onEvent(e: unknown): void },
+  callbacks: null as null | { onEvent(e: unknown): void; onClose(reason: string): void },
+  settings: [] as any[],
+  closed: vi.fn(),
+  micStart: vi.fn(async () => {}),
   board: null as any,
 }));
 vi.mock("../voice/agentSocket", () => ({
   AgentSocket: class {
-    constructor(_settings: unknown, callbacks: any) {
+    constructor(settings: unknown, callbacks: any) {
+      mocks.settings.push(settings);
       mocks.callbacks = callbacks;
     }
     connect = async () => {};
-    close = () => {};
+    close = mocks.closed;
     respond = mocks.respond;
     injectUserMessage = mocks.send;
     sendAudio = () => {};
@@ -32,7 +29,7 @@ vi.mock("../voice/agentSocket", () => ({
 }));
 vi.mock("../voice/audio", () => ({
   Mic: class {
-    start = async () => {};
+    start = mocks.micStart;
     stop = () => {};
   },
   Player: class {
@@ -46,9 +43,7 @@ vi.mock("react-chessboard", () => ({
     mocks.board = props;
     return (
       <div aria-label="Chessboard">
-        <button onClick={() => props.onPieceDrop("d1", "c2", "wQ")}>
-          Drop queen on c2
-        </button>
+        <button onClick={() => props.onPieceDrop("d1", "c2", "wQ")}>Drop queen on c2</button>
         <output>{props.position}</output>
       </div>
     );
@@ -61,8 +56,7 @@ vi.mock("../api", () => ({
   fetchPosition: async () => null,
 }));
 
-const fen =
-  "r4rk1/pp1b2pp/2pbpq2/3p1p2/2PPn3/1P1BP3/PB1N1PPP/R2Q1RK1 w - - 0 12";
+const fen = "r4rk1/pp1b2pp/2pbpq2/3p1p2/2PPn3/1P1BP3/PB1N1PPP/R2Q1RK1 w - - 0 12";
 const levels = { slip: 0, tricky: 0, deep: 1, unrated: 0 };
 const profile: Profile = {
   username: "alice",
@@ -137,6 +131,9 @@ beforeEach(() => {
   mocks.send.mockReset();
   mocks.respond.mockReset();
   mocks.callbacks = null;
+  mocks.settings = [];
+  mocks.closed.mockReset();
+  mocks.micStart.mockClear();
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -149,12 +146,10 @@ beforeEach(() => {
     "fetch",
     vi.fn(
       async (url: string) =>
-        new Response(
-          JSON.stringify(
-            url.includes("/voice/token") ? { token: "test" } : null,
-          ),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
+        new Response(JSON.stringify(url.includes("/voice/token") ? { token: "test" } : null), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
     ),
   );
 });
@@ -164,9 +159,7 @@ afterEach(() => {
 });
 async function load() {
   render(<App />);
-  fireEvent.click(
-    screen.getByRole("button", { name: "Try Knight_ofthelight73" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Try Knight_ofthelight73" }));
   await screen.findByRole("heading", { name: "alice" });
 }
 
@@ -184,14 +177,10 @@ it("opens a visible voice conversation on Profile and keeps it on Choose focus b
   );
   expect(screen.getByText("Let's work on positional decisions.")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Choose focus" }));
-  expect(
-    screen.getByRole("region", { name: "Coach conversation" }),
-  ).toBeTruthy();
+  expect(screen.getByRole("region", { name: "Coach conversation" })).toBeTruthy();
   expect(screen.queryByLabelText("Chessboard")).toBeNull();
   fireEvent.keyDown(document, { key: "Escape" });
-  expect(
-    screen.queryByRole("region", { name: "Coach conversation" }),
-  ).toBeNull();
+  expect(screen.queryByRole("region", { name: "Coach conversation" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Show conversation" }));
   expect(screen.getByText("Let's work on positional decisions.")).toBeTruthy();
 });
@@ -201,20 +190,12 @@ it("plays a legal typed move directly while voice is active, then gives verified
   fireEvent.click(screen.getByRole("button", { name: "Drill this pattern" }));
   await screen.findByLabelText("Chessboard");
   fireEvent.click(screen.getByRole("button", { name: "Start voice" }));
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Stop voice" })).toBeTruthy(),
-  );
+  await waitFor(() => expect(screen.getByRole("button", { name: "Stop voice" })).toBeTruthy());
   fireEvent.change(screen.getByLabelText("Your move"), {
     target: { value: "Qc2" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Play" }));
-  await waitFor(
-    () =>
-      expect(mocks.send).toHaveBeenCalledWith(
-        expect.stringContaining("Verified move result"),
-      ),
-    { timeout: 3000 },
-  );
+  await waitFor(() => expect(mocks.send).toHaveBeenCalledWith(expect.stringContaining("Verified move result")), { timeout: 3000 });
   expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b");
   const requests = vi.mocked(fetch).mock.calls.length;
   await act(async () =>
@@ -230,16 +211,8 @@ it("plays a legal typed move directly while voice is active, then gives verified
       ],
     }),
   );
-  await waitFor(() =>
-    expect(mocks.respond).toHaveBeenCalledWith(
-      "duplicate",
-      "play_move",
-      expect.any(String),
-    ),
-  );
-  expect(JSON.parse(mocks.respond.mock.calls[0][2]).verdict).not.toBe(
-    "illegal",
-  );
+  await waitFor(() => expect(mocks.respond).toHaveBeenCalledWith("duplicate", "play_move", expect.any(String)));
+  expect(JSON.parse(mocks.respond.mock.calls[0][2]).verdict).not.toBe("illegal");
   expect(vi.mocked(fetch).mock.calls.length).toBe(requests);
 });
 
@@ -261,10 +234,7 @@ it("puts the explanatory circle key above the game grid", async () => {
   expect(guide.textContent).toContain("Bigger dot");
   expect(guide.textContent).toContain("Outer ring");
   expect(guide.textContent).toContain("Dashed");
-  expect(
-    guide.compareDocumentPosition(screen.getByRole("table")) &
-      Node.DOCUMENT_POSITION_FOLLOWING,
-  ).toBeTruthy();
+  expect(guide.compareDocumentPosition(screen.getByRole("table")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 it("removes chessboard animation when reduced motion is requested", async () => {
@@ -277,4 +247,117 @@ it("removes chessboard animation when reduced motion is requested", async () => 
   fireEvent.click(screen.getByRole("button", { name: "Drill this pattern" }));
   await screen.findByLabelText("Chessboard");
   expect(mocks.board.animationDuration).toBe(0);
+});
+
+it("keeps typing and the same conversation available when voice is stopped and resumed", async () => {
+  await load();
+  fireEvent.click(screen.getByRole("button", { name: "Start voice" }));
+  await screen.findByRole("button", { name: "Stop voice" });
+  await act(async () =>
+    mocks.callbacks?.onEvent({ type: "ConversationText", role: "assistant", content: "We were discussing time trouble." }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Stop voice" }));
+  expect((screen.getByLabelText("Message your coach") as HTMLInputElement).disabled).toBe(false);
+  fireEvent.change(screen.getByLabelText("Message your coach"), { target: { value: "Let's practice that" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(mocks.send).toHaveBeenCalledWith("Let's practice that"));
+  expect(mocks.closed).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Start voice" }));
+  await screen.findByRole("button", { name: "Stop voice" });
+  expect(mocks.settings).toHaveLength(1);
+  expect(screen.getByText("We were discussing time trouble.")).toBeTruthy();
+});
+
+it("can begin a typed conversation without microphone permission or starting voice", async () => {
+  await load();
+  fireEvent.click(screen.getByRole("button", { name: "Show conversation" }));
+  fireEvent.change(screen.getByLabelText("Message your coach"), { target: { value: "What should I practice?" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(mocks.send).toHaveBeenCalledWith("What should I practice?"));
+  expect(mocks.micStart).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Start voice" })).toBeTruthy();
+});
+
+it("supports a typed coach question beside the board with voice off", async () => {
+  await load();
+  fireEvent.click(screen.getByRole("button", { name: "Drill this pattern" }));
+  await screen.findByLabelText("Chessboard");
+  fireEvent.click(screen.getByRole("button", { name: "Ask coach a question" }));
+  fireEvent.change(screen.getByLabelText("Message your coach"), { target: { value: "Can I have a hint?" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(mocks.send).toHaveBeenCalledWith("Can I have a hint?"));
+  expect(mocks.micStart).not.toHaveBeenCalled();
+});
+
+it("restores conversation context after a network disconnect without a second greeting", async () => {
+  await load();
+  fireEvent.click(screen.getByRole("button", { name: "Start voice" }));
+  await screen.findByRole("button", { name: "Stop voice" });
+  await act(async () =>
+    mocks.callbacks?.onEvent({ type: "ConversationText", role: "assistant", content: "Let's keep working on your timing." }),
+  );
+  await act(async () => mocks.callbacks?.onClose("network lost"));
+  fireEvent.change(screen.getByLabelText("Message your coach"), { target: { value: "Continue" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(mocks.settings).toHaveLength(2));
+  expect(mocks.settings[1].agent.greeting).toBeUndefined();
+  expect(mocks.settings[1].agent.context.messages).toContainEqual({
+    type: "History",
+    role: "assistant",
+    content: "Let's keep working on your timing.",
+  });
+});
+
+it("opens time trouble from Choose focus, counts down, expires and permits untimed dragging", async () => {
+  const originalPatterns = report.patterns;
+  const originalProfilePatterns = profile.patterns;
+  report.patterns = [
+    ...originalPatterns,
+    { tag: "time_trouble", count: 1, avgCpl: 100, examples: [{ ...originalPatterns[0].examples[0], recordedClockCs: 80 }] },
+  ];
+  profile.patterns = [...originalProfilePatterns, { ...originalProfilePatterns[0], tag: "time_trouble" }];
+  try {
+    await load();
+    fireEvent.click(screen.getByRole("button", { name: "Choose focus" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Timed drill" }));
+    await screen.findByRole("button", { name: "Start clock" });
+    expect(mocks.board.arePiecesDraggable).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Start clock" }));
+    await waitFor(() => expect(mocks.board.arePiecesDraggable).toBe(true));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry timed attempt" })).toBeTruthy(), { timeout: 2500 });
+    expect(mocks.board.arePiecesDraggable).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Practice without clock" }));
+    await waitFor(() => expect(mocks.board.arePiecesDraggable).toBe(true));
+    await act(async () => {
+      expect(mocks.board.onPieceDrop("d1", "c2", "wQ")).toBe(true);
+    });
+    expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b");
+  } finally {
+    report.patterns = originalPatterns;
+    profile.patterns = originalProfilePatterns;
+  }
+});
+
+it("accepts a spoken timed move as soon as its legal transcript arrives, before an agent tool call", async () => {
+  const prior = report.patterns,
+    priorProfile = profile.patterns;
+  report.patterns = [
+    ...prior,
+    { tag: "time_trouble", count: 1, avgCpl: 100, examples: [{ ...prior[0].examples[0], recordedClockCs: 3000 }] },
+  ];
+  profile.patterns = [...priorProfile, { ...priorProfile[0], tag: "time_trouble" }];
+  try {
+    await load();
+    fireEvent.click(screen.getByRole("button", { name: "Choose focus" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Timed drill" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Start voice" }));
+    await screen.findByRole("button", { name: "Stop voice" });
+    fireEvent.click(screen.getByRole("button", { name: "Start clock" }));
+    await act(async () => mocks.callbacks?.onEvent({ type: "ConversationText", role: "user", content: "Queen see two" }));
+    await waitFor(() => expect(document.querySelector(".decision-clock.is-submitted")).toBeTruthy());
+    await waitFor(() => expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b"), { timeout: 2500 });
+  } finally {
+    report.patterns = prior;
+    profile.patterns = priorProfile;
+  }
 });

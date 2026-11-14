@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { fetchPosition, fetchProfile } from "./api";
-import type { Example, Level } from "./types";
 import { flowReducer, initialFlow, type Step } from "./flow/flow";
 import type { GridGame, GridMark, Profile as ProfileData } from "./profile/types";
 import { Analyzing } from "./ui/Analyzing";
@@ -11,7 +10,6 @@ import { Profile } from "./ui/Profile";
 import { Rail } from "./ui/Rail";
 import { useAnalysis, messageFor } from "./ui/useAnalysis";
 import { useCoach } from "./ui/useCoach";
-import { loadClockExamples } from "./ui/clockExamples";
 import { Conversation } from "./ui/Conversation";
 
 export default function App() {
@@ -85,16 +83,6 @@ export default function App() {
     dispatch({ type: "chooseFocus", tag });
     await coach.actions.startDrill(tag);
   };
-  // Clock mistakes: the report only carries them with Slips on, so fetch them with Slips added and
-  // keep the ones at the selected levels. Same source for the plate's state and its "See the mistake".
-  const [clockExamples, setClockExamples] = useState<Example[] | null>(null);
-  const levelKey = coach.levels.join(",");
-  useEffect(() => {
-    setClockExamples(null);
-    if (!username) return;
-    const selected = levelKey.split(",") as Level[];
-    return loadClockExamples(username, selected, setClockExamples);
-  }, [username, levelKey]);
 
   const show = async (tag: string) => {
     await coach.actions.showMistake(tag);
@@ -176,8 +164,6 @@ export default function App() {
         onLevels={(lv) => void changeLevels(lv)}
         onDrill={(t) => void drillTag(t)}
         onShow={(t) => void show(t)}
-        clockExamples={clockExamples}
-        onShowExample={(t, ex) => coach.actions.showExample(t, ex)}
         busy={coach.busy}
       />
     );
@@ -202,7 +188,7 @@ export default function App() {
           stop: coach.actions.stopVoice,
           exportSession: coach.actions.exportSession,
           showConversation:
-            flow.step !== "drill" && (coach.status !== "idle" || coach.lines.length > 0) ? () => setConversationOpen(true) : undefined,
+            username && flow.step !== "drill" ? () => setConversationOpen(true) : undefined,
         }}
       />
       <main className={`main step-${flow.step}`} ref={mainRef}>

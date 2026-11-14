@@ -13,6 +13,7 @@ export interface Example {
   kind: "tactical" | "positional";
   severity: "inaccuracy" | "mistake" | "blunder";
   difficultyElo: number | null; // UI only; never given to the LLM
+  recordedClockCs?: number | null; // recorded post-move game clock; centiseconds
 }
 
 export interface Pattern {

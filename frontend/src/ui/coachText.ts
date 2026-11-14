@@ -35,6 +35,8 @@ export function describeResult(name: string, raw: unknown): string | null {
     case "reveal_answer":
       return `The best move was ${str(r.bestSpoken)}. In the game you played ${str(r.gameMoveSpoken)}.`;
     case "reset_position":
+    case "start_clock":
+    case "untimed_practice":
       return sentence(str(r.status));
     case "start_drill":
     case "open_position":

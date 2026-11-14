@@ -58,7 +58,7 @@ The visual system and responsive behavior are documented in [DESIGN.md](DESIGN.m
   levels compare it with the player's own rating (slip: they should see it; deep: a stretch). An earlier version
   used the move model's probability here and rated a free-queen capture as "deep" (the model gave it 0.3%); the
   engine trace puts it at about 900 Elo, a slip for a 2400 player. Each mistake belongs to one primary pattern,
-  including a new **positional** pattern; clock errors stay out of drills; and the coach describes difficulty in
+  including a new **positional** pattern; clock errors support timed decision drills; and the coach describes difficulty in
   words ("a quiet positional move, the kind that's hard to find even at your level"), never percentages.
 - **Line playout.** Every move the player suggests plays on the board, followed by up to 9 plies, ending with you to move, of the engine's
   best line, one move at a time with a marker-red arrow and caption, and a plain-language eval ("Your opponent has a clear

@@ -64,9 +64,9 @@ const call = (name: string, args: Record<string, unknown>, s: ReturnType<typeof 
   handleFunctionCall(name, args, s, fx) as Promise<Record<string, any>>;
 
 describe("FUNCTION_DEFS", () => {
-  it("declares the thirteen client-side functions in order", () => {
+  it("declares the fifteen client-side functions in order", () => {
     expect(FUNCTION_DEFS.map((f) => f.name)).toEqual([
-      "get_profile", "get_report", "show_mistake", "start_drill", "play_move", "get_hint", "reveal_answer", "explain_line", "try_move", "reset_position", "set_levels", "step_line", "next_move",
+      "start_clock", "untimed_practice", "get_profile", "get_report", "show_mistake", "start_drill", "play_move", "get_hint", "reveal_answer", "explain_line", "try_move", "reset_position", "set_levels", "step_line", "next_move",
     ]);
     for (const f of FUNCTION_DEFS) {
       expect(f.parameters.type).toBe("object");

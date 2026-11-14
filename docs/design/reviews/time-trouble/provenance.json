@@ -1,0 +1,57 @@
+{
+  "source": "Authentic production profile and selected tricky time-trouble position 53TMpDpZ, ply 131, loaded into local Vite frontend",
+  "clock": "Deterministic six-second recordedClockCs fixture; not the actual game clock",
+  "chat": "Unsent draft with voice off; no microphone access",
+  "captures": [
+    {
+      "file": "chat-off-desktop.png",
+      "viewportWidth": 1440,
+      "sha256": "ef1463b14958b70c7d3cb62d6f057f8fc32157b0276e246b48c58d9fe101ce25"
+    },
+    {
+      "file": "chat-off-mobile.png",
+      "viewportWidth": 390,
+      "sha256": "3f36b3cb0b569fdb338983fb268b893c3619590d49b4620dddb9358a5abdbf22"
+    },
+    {
+      "file": "timed-ready-desktop.png",
+      "viewportWidth": 1440,
+      "sha256": "13697a3b817b7b75d8dc8df9ae7699fdae1fb0e6bf17c6154670f081e56bfbc1"
+    },
+    {
+      "file": "timed-ready-mobile.png",
+      "viewportWidth": 390,
+      "sha256": "ff20d44d06d9a72010ac7cc2173f954e50bba49404e39e3698dc45a89a3ef25f"
+    },
+    {
+      "file": "timed-running-desktop.png",
+      "viewportWidth": 1440,
+      "sha256": "8e40be518ec51ebbb92b538ba01e248069cb47621a40b53bf0fa4c046a76bdf6"
+    },
+    {
+      "file": "timed-running-mobile.png",
+      "viewportWidth": 390,
+      "sha256": "4ea0b5a94febe7f5c239e02616fac586d4c361f72daca1ac9166871e891052a1"
+    },
+    {
+      "file": "timed-expired-desktop.png",
+      "viewportWidth": 1440,
+      "sha256": "991f9518e38d480b0120c87dc37e768db9acd53a11195ad6c5a19b100e70febb"
+    },
+    {
+      "file": "timed-expired-mobile.png",
+      "viewportWidth": 390,
+      "sha256": "05eaab082b6c7a982b4a3676c1c039eccc30c10dedb808494226ed4559d4ebb9"
+    },
+    {
+      "file": "timed-untimed-desktop.png",
+      "viewportWidth": 1440,
+      "sha256": "4ae51819bc1a9142d2dba72eb8f3917d9c744348e49dc402703dafd31a34f86d"
+    },
+    {
+      "file": "timed-untimed-mobile.png",
+      "viewportWidth": 390,
+      "sha256": "d3f1dd831a4c9033e04dabfd3ee1bb76bcaf5e6566cb8fcf5b50c9cba51adb55"
+    }
+  ]
+}

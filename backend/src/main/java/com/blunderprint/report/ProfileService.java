@@ -181,7 +181,7 @@ public class ProfileService {
         Optional<UUID> run = reports.latestDoneRun(username);
         if (run.isEmpty()) return Optional.empty();
         List<ReportService.Example> found = jdbc.query("""
-            select m.game_id, m.ply, m.before_fen, m.played_uci, a.best_uci, a.cpl, a.p_played, a.win_drop,
+            select m.game_id, m.ply, m.before_fen, m.played_uci, m.clock_cs, a.best_uci, a.cpl, a.p_played, a.win_drop,
                    a.best_quiet, a.difficulty_elo, c.pv, %s as level
             from move m join move_analysis a on a.move_id = m.id
             join analysis_run r on r.id = m.run_id
