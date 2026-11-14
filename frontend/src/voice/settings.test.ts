@@ -26,6 +26,8 @@ describe("buildSettings", () => {
 
   it("declares the coach functions and names the player in the prompt", () => {
     expect(s.agent.think.functions.map((f: { name: string }) => f.name)).toEqual([
+      "review_attempt",
+      "retry_position",
       "start_clock",
       "untimed_practice",
       "get_profile",
@@ -66,7 +68,7 @@ describe("buildSettings", () => {
     expect(s.agent.think.prompt).toContain("alternate positional and tactical");
     expect(s.agent.think.prompt).toContain("Only drill or show patterns where drillable is true");
     expect(s.agent.think.prompt).toContain("time_trouble is a timed decision drill");
-    expect(s.agent.think.prompt).toContain("Start every session by calling get_profile");
+    expect(s.agent.think.prompt).toContain("A greeting alone is not a request for a profile overview");
     expect(s.agent.think.prompt).toContain("two to three sentence overview");
     expect(s.agent.think.prompt).toContain("offer focus choices");
     expect(s.agent.think.prompt).toContain("keep calling next_move until done is true");

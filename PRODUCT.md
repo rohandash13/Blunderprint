@@ -37,6 +37,7 @@ drill for a 1200.
   by dragging pieces, typing moves and clicking.
 - Stopping voice turns off the microphone and audio while preserving the conversation. Typed chat works without starting voice, and reconnects carry the conversation forward.
 - Time-trouble positions support a timed decision on the same board, using a recorded game-clock budget when available or a short fallback. The player starts when ready and can retry or continue untimed.
+- Each explicit Start voice action briefly introduces the coach in the current context. Questions about a wrong attempt return to that move on the board, review verified replies, and offer another try with the answer hidden. Clicking a piece shows its legal destinations.
 - Desktop first (board + coach side by side); must remain usable on a phone.
 
 ## Capabilities and Constraints

@@ -54,7 +54,7 @@ export function Landing({ error, initial, onSubmit }: Props) {
             </p>
           ) : (
             <p id="landing-note" className="form-note">
-              Up to 40 recent rated games. Players analyzed this week open straight away; a new player takes a few minutes.
+              Recent rated blitz, rapid and classical games. Players analyzed this week open straight away; a new player takes a few minutes.
             </p>
           )}
         </form>

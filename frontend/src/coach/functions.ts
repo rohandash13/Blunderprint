@@ -32,6 +32,18 @@ const NO_ARGS = { type: "object" as const, properties: {} };
 
 export const FUNCTION_DEFS: FunctionDef[] = [
   {
+    name: "review_attempt",
+    description:
+      "When the player asks where they went wrong, why their attempted move failed, or to revisit the mistake, return the board to that attempted move and queue its verified continuation. Call next_move to show and explain each ply, then retry_position after the consequence has been explained. Never invent a reply or reveal the hidden best move.",
+    parameters: NO_ARGS,
+  },
+  {
+    name: "retry_position",
+    description:
+      "Return to the original drill after reviewing a wrong attempt so the player can try a stronger move. Keeps the answer hidden and retains the attempted line for later review; a timed drill waits for readiness again.",
+    parameters: NO_ARGS,
+  },
+  {
     name: "start_clock",
     description:
       "Start the time-trouble decision clock when the player says ready. The board's practice timer uses a recorded game clock or a thirty-second fallback. Do not start before the player is ready.",
@@ -46,7 +58,7 @@ export const FUNCTION_DEFS: FunctionDef[] = [
   {
     name: "get_profile",
     description:
-      "Get an overview of the player: a written summary, their ratings, strengths, weaknesses and the pattern worth working on first. Call this first in a session, then give a two to three sentence overview and offer focus choices.",
+      "Get an overview of the player when they ask about their profile, strengths, weaknesses or what to practice. Give a short overview and offer focus choices. Do not call this just because the player greets you during an active drill.",
     parameters: NO_ARGS,
   },
   {
@@ -143,7 +155,10 @@ export const FUNCTION_DEFS: FunctionDef[] = [
       "Step the board through the last played line. Use when the player says go back, forward, back to the start, or to the end.",
     parameters: {
       type: "object",
-      properties: { direction: { type: "string", enum: ["back", "forward", "start", "end"] } },
+      properties: {
+        direction: { type: "string", enum: ["back", "forward", "start", "end"] },
+        count: { type: "integer", minimum: 1, maximum: 20, description: "Number of plies to step back or forward; default one." },
+      },
       required: ["direction"],
     },
   },
@@ -156,6 +171,7 @@ export const FUNCTION_DEFS: FunctionDef[] = [
 ];
 
 export interface Drill {
+  lastAttempt?: { mine: MoveFacts; line: MoveFacts[]; evalSpoken: string | null; verdict: string };
   clock?: DrillClock;
   tag: string;
   example: Example;
@@ -170,6 +186,7 @@ export interface Drill {
 
 /** The engine line held back by play_move / try_move and shown one ply per next_move. */
 export interface PendingLine {
+  retryAvailable?: boolean;
   /** Position the player's move was made from. */
   base: string;
   /** Position before each ply. */
@@ -327,7 +344,15 @@ function plyOut(p: PendingLine, i: number) {
 }
 
 /** Hold the line for next_move; returns the first ply (not yet shown) or null. */
-function holdLine(state: CoachState, base: string, mine: MoveFacts, play: Awaited<ReturnType<typeof playOut>>, you: Side, follow: boolean) {
+function holdLine(
+  state: CoachState,
+  base: string,
+  mine: MoveFacts,
+  play: Awaited<ReturnType<typeof playOut>>,
+  you: Side,
+  follow: boolean,
+  retryAvailable = false,
+) {
   state.pending = null;
   if (play.line.length === 0) return null;
   state.pending = {
@@ -338,6 +363,7 @@ function holdLine(state: CoachState, base: string, mine: MoveFacts, play: Awaite
     next: 0,
     evalSpoken: play.evalSpoken,
     follow,
+    retryAvailable,
   };
   return plyOut(state.pending, 0);
 }
@@ -402,6 +428,19 @@ export async function handleFunctionCall(
       return nextMove(state, fx);
     case "get_profile":
       return getProfile(state, fx);
+    case "review_attempt":
+      return reviewAttempt(state, fx);
+    case "retry_position": {
+      const d = state.drill;
+      if (!d) return NO_DRILL;
+      resetPosition(state, fx);
+      d.solved = false;
+      d.revealed = false;
+      return {
+        status: "Back at the original position. Try a stronger move; the answer is still hidden.",
+        clockReady: d.clock?.status === "ready",
+      };
+    }
   }
 
   if (name !== "get_report" && name !== "show_mistake" && name !== "start_drill") {
@@ -521,7 +560,10 @@ async function playMove(args: Record<string, unknown>, state: CoachState, fx: Co
     return { verdict: j.verdict, spoken, attempts: d.attempts, facts, lineLength: 0, evalSpoken: null, materialForYou: 0, next: null };
   }
   const play = await playOut(mine, you, fx, isOpen(d) && !solved ? ex.best : null);
-  const next = holdLine(state, ex.fen, mine, play, you, solved);
+  const next = holdLine(state, ex.fen, mine, play, you, solved, !solved);
+  if (!solved) {
+    d.lastAttempt = { mine, line: play.line, evalSpoken: play.evalSpoken, verdict: j.verdict };
+  }
   d.awaitingReply = sideToMove(play.finalFen) !== you;
   if (solved) {
     d.solved = true;
@@ -654,7 +696,51 @@ async function nextMove(state: CoachState, fx: CoachEffects) {
     if (p.follow && state.drill) state.drill.exploreFen = f.fenAfter;
     if (out.done) state.pending = null;
   }
-  return { ...out, ...(out.done && p.evalSpoken ? { evalSpoken: p.evalSpoken } : {}) };
+  return {
+    ...out,
+    shown: true,
+    ...(out.done && p.evalSpoken ? { evalSpoken: p.evalSpoken } : {}),
+    ...(out.done && p.retryAvailable
+      ? {
+          retryAvailable: true,
+          instruction:
+            "Explain this displayed consequence, then call retry_position and ask the player to try again. Do not reveal the best move.",
+        }
+      : {}),
+  };
+}
+
+function reviewAttempt(state: CoachState, fx: CoachEffects) {
+  const d = state.drill,
+    attempt = d?.lastAttempt;
+  if (!d || !attempt) return { error: "No attempted mistake is available to review yet. Ask the player to try a move first." };
+  if (d.clock) {
+    d.clock.status = "untimed";
+    d.clock.deadline = null;
+  }
+  const plies = [attempt.mine, ...attempt.line];
+  d.exploreFen = d.example.fen;
+  d.awaitingReply = false;
+  state.pending = {
+    base: d.example.fen,
+    fens: [d.example.fen, ...plies.slice(0, -1).map((move) => move.fenAfter)],
+    plies,
+    you: sideToMove(d.example.fen),
+    next: 0,
+    evalSpoken: attempt.evalSpoken,
+    follow: false,
+    retryAvailable: true,
+  };
+  fx.showPosition(d.example.fen, [arrow(attempt.mine.uci, PLAYED)]);
+  return {
+    status: "Back at your attempted move. Let's review what happened, one move at a time.",
+    playedSpoken: attempt.mine.spoken,
+    verdict: attempt.verdict,
+    lineLength: plies.length,
+    next: plyOut(state.pending, 0),
+    instruction:
+      "Call next_move before describing each move. Explain only its returned facts. At the end call retry_position, with the best move still hidden.",
+  };
 }
 
 async function getProfile(state: CoachState, fx: CoachEffects) {
@@ -718,7 +804,10 @@ async function setLevels(args: Record<string, unknown>, state: CoachState, fx: C
 function stepLine(args: Record<string, unknown>, state: CoachState, fx: CoachEffects) {
   const dir = String(args.direction ?? "");
   if (!["back", "forward", "start", "end"].includes(dir)) return { error: "direction must be back, forward, start or end" };
-  const r = fx.step(dir as StepDirection);
+  const count = args.count === undefined ? 1 : Number(args.count);
+  if (!Number.isInteger(count) || count < 1 || count > 20) return { error: "count must be an integer from 1 to 20" };
+  let r: ReturnType<CoachEffects["step"]> = null;
+  for (let i = 0; i < (dir === "back" || dir === "forward" ? count : 1); i++) r = fx.step(dir as StepDirection);
   if (!r) return { error: "Nothing to step to. Say so." };
   state.pending = null; // stepping is manual navigation; the coach-paced line is dropped
   if (state.drill) {

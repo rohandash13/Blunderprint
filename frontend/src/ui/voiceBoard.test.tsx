@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   settings: [] as any[],
   closed: vi.fn(),
   micStart: vi.fn(async () => {}),
+  introduce: vi.fn(),
+  updatePrompt: vi.fn(),
   board: null as any,
 }));
 vi.mock("../voice/agentSocket", () => ({
@@ -24,6 +26,8 @@ vi.mock("../voice/agentSocket", () => ({
     close = mocks.closed;
     respond = mocks.respond;
     injectUserMessage = mocks.send;
+    injectAgentMessage = mocks.introduce;
+    updatePrompt = mocks.updatePrompt;
     sendAudio = () => {};
   },
 }));
@@ -134,6 +138,8 @@ beforeEach(() => {
   mocks.settings = [];
   mocks.closed.mockReset();
   mocks.micStart.mockClear();
+  mocks.introduce.mockClear();
+  mocks.updatePrompt.mockClear();
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -162,6 +168,11 @@ async function load() {
   fireEvent.click(screen.getByRole("button", { name: "Try Knight_ofthelight73" }));
   await screen.findByRole("heading", { name: "alice" });
 }
+
+it("explains which rated games are eligible before a username is analyzed", () => {
+  render(<App />);
+  expect(screen.getByText(/Recent rated blitz, rapid and classical games/)).toBeTruthy();
+});
 
 it("opens a visible voice conversation on Profile and keeps it on Choose focus before a board exists", async () => {
   await load();
@@ -228,6 +239,34 @@ it("allows a legal piece drop and rejects an illegal one through the same board 
   expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b");
 });
 
+it("shows legal destination dots on click and supports click-to-move", async () => {
+  await load();
+  fireEvent.click(screen.getByRole("button", { name: "Drill this pattern" }));
+  await screen.findByLabelText("Chessboard");
+  await act(async () => mocks.board.onSquareClick("d1", "wQ"));
+  expect(mocks.board.customSquareStyles.c2.backgroundImage).toContain("radial-gradient");
+  expect(mocks.board.customSquareStyles.d8).toBeUndefined();
+  await act(async () => mocks.board.onSquareClick("c2", undefined));
+  expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b");
+  expect(mocks.board.customSquareStyles.c2?.backgroundImage).toBeUndefined();
+});
+
+it("reviews the attempted move on the board and returns to a hidden-answer retry", async () => {
+  await load();
+  fireEvent.click(screen.getByRole("button", { name: "Drill this pattern" }));
+  await screen.findByLabelText("Chessboard");
+  await act(async () => mocks.board.onPieceDrop("d1", "c2", "wQ"));
+  const review = await screen.findByRole("button", { name: "Review my move" });
+  fireEvent.click(review);
+  await waitFor(() => expect(mocks.board.position).toBe(fen));
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  await waitFor(() => expect(mocks.board.position).toContain("PBQN1PPP/R4RK1 b"), { timeout: 2500 });
+  await waitFor(() => expect((screen.getByRole("button", { name: "Try again" }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await waitFor(() => expect(mocks.board.position).toBe(fen));
+  expect(mocks.board.customArrows).toEqual([]);
+});
+
 it("puts the explanatory circle key above the game grid", async () => {
   await load();
   const guide = screen.getByRole("region", { name: "How to read your grid" });
@@ -265,7 +304,22 @@ it("keeps typing and the same conversation available when voice is stopped and r
   fireEvent.click(screen.getByRole("button", { name: "Start voice" }));
   await screen.findByRole("button", { name: "Stop voice" });
   expect(mocks.settings).toHaveLength(1);
+  expect(mocks.introduce).toHaveBeenCalledTimes(2);
   expect(screen.getByText("We were discussing time trouble.")).toBeTruthy();
+});
+
+it("introduces the coach in the current drill without restarting a profile overview", async () => {
+  await load();
+  fireEvent.click(screen.getByRole("button", { name: "Drill this pattern" }));
+  await screen.findByLabelText("Chessboard");
+  const position = mocks.board.position;
+  fireEvent.click(screen.getByRole("button", { name: "Start voice" }));
+  await screen.findByRole("button", { name: "Stop voice" });
+  expect(mocks.introduce).toHaveBeenCalledWith(expect.stringContaining("I'm your Blunderprint coach"));
+  expect(mocks.introduce).toHaveBeenCalledWith(expect.stringContaining("this position"));
+  expect(mocks.updatePrompt).toHaveBeenCalledWith(expect.stringContaining("Do not switch to a profile overview"));
+  expect(mocks.settings[0].agent.greeting).toBeUndefined();
+  expect(mocks.board.position).toBe(position);
 });
 
 it("can begin a typed conversation without microphone permission or starting voice", async () => {

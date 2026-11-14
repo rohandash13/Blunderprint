@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Chessboard } from "react-chessboard";
-import { Chess } from "chess.js";
+import { Chess, type Square } from "chess.js";
 import type { Arrow as CbArrow } from "react-chessboard/dist/chessboard/types";
 import { patternLabel } from "../coach/patternLabels";
 import type { Level } from "../types";
@@ -38,6 +38,13 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
   const [wrapRef, wrapW] = useWidth<HTMLDivElement>();
   const reduceMotion = useReducedMotion();
   const [dragFrom, setDragFrom] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [promotion, setPromotion] = useState<{ from: string; to: string } | null>(null);
+  useEffect(() => {
+    setSelected(null);
+    setDragFrom(null);
+    setPromotion(null);
+  }, [fen, drill, drill?.clock?.status]);
   const ex = drill?.example ?? lastShown;
   const tag = drill?.tag ?? coach.shownTag;
 
@@ -75,11 +82,21 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
 
   const toMove = ex.fen.split(" ")[1] === "w" ? "White" : "Black";
   const moveNo = Number(ex.fen.split(" ")[5] ?? 1);
+  const clock = drill?.clock;
+  const covered = clock?.status === "ready";
+  const clockBlocked = covered || clock?.status === "expired";
+  const canMove = !!drill && !clockBlocked && !coach.busy && !coach.checkingMove && fen.split(" ")[1] === ex.fen.split(" ")[1];
   const squareStyles: Record<string, CSSProperties> = {};
-  if (dragFrom) {
+  const from = dragFrom ?? selected;
+  if (from && canMove) {
     try {
-      for (const move of new Chess(fen).moves({ verbose: true }).filter((move) => move.from === dragFrom))
-        squareStyles[move.to] = { boxShadow: "inset 0 0 0 4px rgba(31,77,58,.4)" };
+      squareStyles[from] = { backgroundColor: "rgba(242,217,78,.55)" };
+      for (const move of new Chess(fen).moves({ verbose: true }).filter((move) => move.from === from))
+        squareStyles[move.to] = {
+          backgroundImage: move.captured
+            ? "radial-gradient(circle, transparent 60%, rgba(26,26,26,.42) 62%, rgba(26,26,26,.42) 70%, transparent 72%)"
+            : "radial-gradient(circle, rgba(26,26,26,.38) 18%, transparent 20%)",
+        };
     } catch {
       /* position changed during the drag */
     }
@@ -92,9 +109,24 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
   const canNext = !coach.checkingMove && ((linePos ? linePos.ply < linePos.total : false) || pendingLeft > 0);
   const boardW = Math.max(240, Math.min(MAX_BOARD, wrapW));
   const title = tag ? patternLabel(tag).name : "A mistake from your game";
-  const clock = drill?.clock;
-  const covered = clock?.status === "ready";
-  const clockBlocked = covered || clock?.status === "expired";
+  const clickSquare = (square: string) => {
+    if (!canMove) {
+      setSelected(null);
+      return;
+    }
+    const board = new Chess(fen);
+    if (selected) {
+      const legal = board.moves({ verbose: true }).filter((move) => move.from === selected && move.to === square);
+      if (legal.length) {
+        if (legal.some((move) => move.promotion)) setPromotion({ from: selected, to: square });
+        else actions.playBoard(selected, square);
+        setSelected(null);
+        return;
+      }
+    }
+    const piece = board.get(square as Square);
+    setSelected(selected === square ? null : piece?.color === board.turn() ? square : null);
+  };
 
   return (
     <div className="drill">
@@ -130,19 +162,27 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
                 position={fen}
                 boardWidth={boardW}
                 boardOrientation={toMove === "White" ? "white" : "black"}
-                arePiecesDraggable={
-                  !!drill && !clockBlocked && !coach.busy && !coach.checkingMove && fen.split(" ")[1] === ex.fen.split(" ")[1]
-                }
+                arePiecesDraggable={canMove}
+                onSquareClick={clickSquare}
                 isDraggablePiece={({ piece }) => piece[0] === fen.split(" ")[1]}
-                onPieceDragBegin={(_piece, square) => setDragFrom(square)}
+                onPieceDragBegin={(_piece, square) => {
+                  setSelected(null);
+                  setDragFrom(square);
+                }}
                 onPieceDragEnd={() => setDragFrom(null)}
                 onPieceDrop={(from, to) => {
                   setDragFrom(null);
+                  setSelected(null);
                   return actions.playBoard(from, to);
                 }}
-                onPromotionPieceSelect={(piece, from, to) =>
-                  !!piece && !!from && !!to && actions.playBoard(from, to, piece[1].toLowerCase())
-                }
+                showPromotionDialog={promotion ? true : undefined}
+                promotionToSquare={promotion?.to as Square | undefined}
+                onPromotionPieceSelect={(piece, from, to) => {
+                  const source = promotion?.from ?? from,
+                    target = promotion?.to ?? to;
+                  setPromotion(null);
+                  return !!piece && !!source && !!target && actions.playBoard(source, target, piece[1].toLowerCase());
+                }}
                 animationDuration={reduceMotion ? 0 : 260}
                 customSquareStyles={squareStyles}
                 customArrows={arrows as CbArrow[]}

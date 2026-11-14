@@ -1,5 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import { BEST, CURRENT, FUNCTION_DEFS, PLAYED, openPosition, PLAYOUT_PLIES, REPLY, handleFunctionCall, newCoachState, type Arrow, type CoachEffects } from "./functions";
+import {
+  BEST,
+  CURRENT,
+  FUNCTION_DEFS,
+  PLAYED,
+  openPosition,
+  PLAYOUT_PLIES,
+  REPLY,
+  handleFunctionCall,
+  newCoachState,
+  type Arrow,
+  type CoachEffects,
+} from "./functions";
 import type { Report } from "../types";
 import { describeEval } from "../chess/evalText";
 
@@ -22,8 +34,34 @@ const REPORT: Report = {
       count: 5,
       avgCpl: 412.6,
       examples: [
-        { gameId: "g1", ply: 0, fen: START, played: "g1h3", best: "e2e4", cpl: 300, pPlayed: 0.214, pv: ["e2e4", "e7e5", "g1f3"], level: "tricky", kind: "tactical", severity: "mistake", difficultyElo: 1500 },
-        { gameId: "g2", ply: 1, fen: AFTER_E4, played: "g8h6", best: "e7e5", cpl: 250, pPlayed: 0.18, pv: [], level: "deep", kind: "positional", severity: "blunder", difficultyElo: 2100 },
+        {
+          gameId: "g1",
+          ply: 0,
+          fen: START,
+          played: "g1h3",
+          best: "e2e4",
+          cpl: 300,
+          pPlayed: 0.214,
+          pv: ["e2e4", "e7e5", "g1f3"],
+          level: "tricky",
+          kind: "tactical",
+          severity: "mistake",
+          difficultyElo: 1500,
+        },
+        {
+          gameId: "g2",
+          ply: 1,
+          fen: AFTER_E4,
+          played: "g8h6",
+          best: "e7e5",
+          cpl: 250,
+          pPlayed: 0.18,
+          pv: [],
+          level: "deep",
+          kind: "positional",
+          severity: "blunder",
+          difficultyElo: 2100,
+        },
       ],
     },
     { tag: "other", count: 2, avgCpl: 100, examples: [] },
@@ -38,13 +76,31 @@ function effects(report: Report | null = REPORT, analysis: Analysis = null) {
   const rec = (fn: string, ...args: unknown[]) => calls.push({ fn, args });
   const fx: CoachEffects = {
     fetchProfile: vi.fn(async () => null),
-    fetchReport: vi.fn(async (levels) => { rec("fetchReport", levels); return report; }),
-    showPosition: (fen, arrows) => { shown.push({ fen, arrows }); rec("showPosition", fen, arrows); },
-    animateLine: async (fen, ucis, colors) => { rec("animateLine", fen, ucis, colors); },
-    flashMove: async (fen, uci) => { rec("flashMove", fen, uci); },
-    analyze: vi.fn(async (fen: string) => { rec("analyze", fen); return analysis; }),
-    setLevels: (levels) => { rec("setLevels", levels); },
-    step: (dir) => { rec("step", dir); return dir === "back" ? { fen: START, ply: 0, total: 3 } : null; },
+    fetchReport: vi.fn(async (levels) => {
+      rec("fetchReport", levels);
+      return report;
+    }),
+    showPosition: (fen, arrows) => {
+      shown.push({ fen, arrows });
+      rec("showPosition", fen, arrows);
+    },
+    animateLine: async (fen, ucis, colors) => {
+      rec("animateLine", fen, ucis, colors);
+    },
+    flashMove: async (fen, uci) => {
+      rec("flashMove", fen, uci);
+    },
+    analyze: vi.fn(async (fen: string) => {
+      rec("analyze", fen);
+      return analysis;
+    }),
+    setLevels: (levels) => {
+      rec("setLevels", levels);
+    },
+    step: (dir) => {
+      rec("step", dir);
+      return dir === "back" ? { fen: START, ply: 0, total: 3 } : null;
+    },
   };
   return { fx, calls, shown, of: (fn: string) => calls.filter((c) => c.fn === fn) };
 }
@@ -53,10 +109,43 @@ function effects(report: Report | null = REPORT, analysis: Analysis = null) {
 async function drain(s: ReturnType<typeof newCoachState>, fx: CoachEffects) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const out: Record<string, any>[] = [];
-  while (s.pending) out.push(await handleFunctionCall("next_move", {}, s, fx) as Record<string, unknown>);
+  while (s.pending) out.push((await handleFunctionCall("next_move", {}, s, fx)) as Record<string, unknown>);
   return out;
 }
 const shown = (calls: { args: unknown[] }[]) => calls.map((c) => (c.args[1] as string[])[0]);
+
+describe("reviewing an attempted move", () => {
+  it("returns to the original mistake after exploration, replays verified plies, then permits a hidden-answer retry", async () => {
+    const state = newCoachState(),
+      e = effects(REPORT, { bestUci: "e7e5", scoreCp: 200, pv: ["e7e5", "h3g5", "g8f6"] });
+    await handleFunctionCall("start_drill", { tag: "hanging_piece" }, state, e.fx);
+    await handleFunctionCall("play_move", { move: "Nh3" }, state, e.fx);
+    state.pending = null;
+    state.drill!.exploreFen = AFTER_E4;
+    const reviewed = (await handleFunctionCall("review_attempt", {}, state, e.fx)) as any;
+    expect(reviewed.playedSpoken).toContain("knight");
+    expect(e.shown.at(-1)?.fen).toBe(START);
+    expect(state.pending!.plies[0].uci).toBe("g1h3");
+    const moves = await drain(state, e.fx);
+    expect(moves.at(-1)?.retryAvailable).toBe(true);
+    await handleFunctionCall("retry_position", {}, state, e.fx);
+    expect(e.shown.at(-1)?.fen).toBe(START);
+    expect(state.drill).toMatchObject({ solved: false, revealed: false, exploreFen: START });
+    expect(state.drill!.lastAttempt).toBeTruthy();
+  });
+  it("honestly reports that no attempted move is available", async () => {
+    const state = newCoachState(),
+      e = effects();
+    await handleFunctionCall("start_drill", { tag: "hanging_piece" }, state, e.fx);
+    expect(await handleFunctionCall("review_attempt", {}, state, e.fx)).toHaveProperty("error");
+  });
+  it("steps the requested number of frames for a conversational takeback", async () => {
+    const state = newCoachState(),
+      e = effects();
+    await handleFunctionCall("step_line", { direction: "back", count: 3 }, state, e.fx);
+    expect(e.of("step")).toHaveLength(3);
+  });
+});
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const call = (name: string, args: Record<string, unknown>, s: ReturnType<typeof newCoachState>, fx: CoachEffects) =>
@@ -64,9 +153,25 @@ const call = (name: string, args: Record<string, unknown>, s: ReturnType<typeof 
   handleFunctionCall(name, args, s, fx) as Promise<Record<string, any>>;
 
 describe("FUNCTION_DEFS", () => {
-  it("declares the fifteen client-side functions in order", () => {
+  it("declares the seventeen client-side functions in order", () => {
     expect(FUNCTION_DEFS.map((f) => f.name)).toEqual([
-      "start_clock", "untimed_practice", "get_profile", "get_report", "show_mistake", "start_drill", "play_move", "get_hint", "reveal_answer", "explain_line", "try_move", "reset_position", "set_levels", "step_line", "next_move",
+      "review_attempt",
+      "retry_position",
+      "start_clock",
+      "untimed_practice",
+      "get_profile",
+      "get_report",
+      "show_mistake",
+      "start_drill",
+      "play_move",
+      "get_hint",
+      "reveal_answer",
+      "explain_line",
+      "try_move",
+      "reset_position",
+      "set_levels",
+      "step_line",
+      "next_move",
     ]);
     for (const f of FUNCTION_DEFS) {
       expect(f.parameters.type).toBe("object");
@@ -99,7 +204,7 @@ describe("report and show_mistake", () => {
       drillable: true,
     });
     expect(r.patterns[1].named).toBe(false);
-    expect(r.patterns[1].drillable).toBe(false);          // no examples at these levels: talk about it, don't drill
+    expect(r.patterns[1].drillable).toBe(false); // no examples at these levels: talk about it, don't drill
     expect(r.patterns[1].description).toContain("Uncategorized mistakes");
     expect(r.movesAnalyzed).toBe(400);
   });
@@ -120,19 +225,39 @@ describe("report and show_mistake", () => {
   it("show_mistake shows arrows and returns spoken moves, not SAN", async () => {
     const e = effects();
     const r = await call("show_mistake", { tag: "hanging_piece", index: 1 }, newCoachState(), e.fx);
-    expect(e.shown).toEqual([{ fen: AFTER_E4, arrows: [["g8", "h6", PLAYED], ["e7", "e5", BEST]] }]);
+    expect(e.shown).toEqual([
+      {
+        fen: AFTER_E4,
+        arrows: [
+          ["g8", "h6", PLAYED],
+          ["e7", "e5", BEST],
+        ],
+      },
+    ]);
     expect(r).toEqual({
-      moveNumber: 1, side: "Black", playedSpoken: "knight to h6", bestSpoken: "pawn to e5", cpl: 250, pPlayed: 0.18, level: "deep", kind: "positional", difficultyNote: "a quiet positional move, the kind that's hard to find even at your level",
+      moveNumber: 1,
+      side: "Black",
+      playedSpoken: "knight to h6",
+      bestSpoken: "pawn to e5",
+      cpl: 250,
+      pPlayed: 0.18,
+      level: "deep",
+      kind: "positional",
+      difficultyNote: "a quiet positional move, the kind that's hard to find even at your level",
     });
   });
 
   it("show_mistake rejects unknown tags and bad indexes", async () => {
     const s = newCoachState();
-    expect(await call("show_mistake", { tag: "nope", index: 0 }, s, effects().fx))
-      .toEqual({ error: 'no pattern "nope"', available: ["hanging_piece", "other"] });
+    expect(await call("show_mistake", { tag: "nope", index: 0 }, s, effects().fx)).toEqual({
+      error: 'no pattern "nope"',
+      available: ["hanging_piece", "other"],
+    });
     for (const index of [9, undefined, null, "", true, -1, 1.5, "abc"]) {
-      expect(await call("show_mistake", { tag: "hanging_piece", index }, s, effects().fx))
-        .toEqual({ error: "index out of range", examples: 2 });
+      expect(await call("show_mistake", { tag: "hanging_piece", index }, s, effects().fx)).toEqual({
+        error: "index out of range",
+        examples: 2,
+      });
     }
     expect((await call("show_mistake", { tag: "hanging_piece", index: "1" }, s, effects().fx)).playedSpoken).toBe("knight to h6");
   });
@@ -143,7 +268,14 @@ describe("start_drill and play_move", () => {
     const s = newCoachState();
     const e = effects();
     const ready = await call("start_drill", { tag: "hanging_piece" }, s, e.fx);
-    expect(ready).toEqual({ status: "Position ready, White to move", side: "White", moveNumber: 1, level: "tricky", kind: "tactical", difficultyNote: "a tactic a few moves deep" });
+    expect(ready).toEqual({
+      status: "Position ready, White to move",
+      side: "White",
+      moveNumber: 1,
+      level: "tricky",
+      kind: "tactical",
+      difficultyNote: "a tactic a few moves deep",
+    });
     expect(JSON.stringify(ready)).not.toContain("e4");
     expect(e.shown).toEqual([{ fen: START, arrows: undefined }]);
     expect(s.drill).toMatchObject({ tag: "hanging_piece", attempts: 0, hintsGiven: 0, solved: false, revealed: false, exploreFen: START });
@@ -199,7 +331,14 @@ describe("start_drill and play_move", () => {
     await call("start_drill", { tag: "hanging_piece" }, s, e.fx);
     await call("play_move", { move: "e4" }, s, e.fx);
     const next = await call("start_drill", { tag: "hanging_piece" }, s, e.fx);
-    expect(next).toEqual({ status: "Position ready, Black to move", side: "Black", moveNumber: 1, level: "deep", kind: "positional", difficultyNote: "a quiet positional move, the kind that's hard to find even at your level" });
+    expect(next).toEqual({
+      status: "Position ready, Black to move",
+      side: "Black",
+      moveNumber: 1,
+      level: "deep",
+      kind: "positional",
+      difficultyNote: "a quiet positional move, the kind that's hard to find even at your level",
+    });
   });
 });
 
@@ -239,7 +378,13 @@ describe("hints and reveal", () => {
     expect(r).toMatchObject({ bestSpoken: "pawn to e4", gameMoveSpoken: "knight to h3", cpl: 300 });
     expect(r.facts).toBeDefined();
     expect(s.drill!.revealed).toBe(true);
-    expect(e.shown.at(-1)).toEqual({ fen: START, arrows: [["e2", "e4", BEST], ["g1", "h3", PLAYED]] });
+    expect(e.shown.at(-1)).toEqual({
+      fen: START,
+      arrows: [
+        ["e2", "e4", BEST],
+        ["g1", "h3", PLAYED],
+      ],
+    });
   });
 });
 
@@ -253,7 +398,9 @@ describe("explain_line", () => {
     expect(e.of("analyze")).toEqual([]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(r.line.map((l: any) => [l.ply, l.side, l.spoken])).toEqual([
-      [1, "White", "pawn to e4"], [2, "Black", "pawn to e5"], [3, "White", "knight to f3"],
+      [1, "White", "pawn to e4"],
+      [2, "Black", "pawn to e5"],
+      [3, "White", "knight to f3"],
     ]);
     expect(r.materialBefore).toBe(0);
     expect(r.materialAfter).toBe(0);
@@ -349,9 +496,12 @@ describe("try_move and reset_position", () => {
 });
 
 describe("no drill in progress", () => {
-  it.each(["play_move", "get_hint", "reveal_answer", "explain_line", "try_move", "reset_position"])("%s returns the exact error", async (name) => {
-    expect(await call(name, { move: "e4" }, newCoachState(), effects().fx)).toEqual(NO_DRILL);
-  });
+  it.each(["play_move", "get_hint", "reveal_answer", "explain_line", "try_move", "reset_position"])(
+    "%s returns the exact error",
+    async (name) => {
+      expect(await call(name, { move: "e4" }, newCoachState(), effects().fx)).toEqual(NO_DRILL);
+    },
+  );
   it("unknown function names are reported", async () => {
     expect(await call("launch_rockets", {}, newCoachState(), effects().fx)).toEqual({ error: "unknown function launch_rockets" });
   });
@@ -379,11 +529,15 @@ describe("playout", () => {
     expect(plies[2].evalSpoken).toBe("You have a slight edge");
     expect(r.evalSpoken).toBe("You have a slight edge");
     expect(JSON.stringify(r)).not.toContain("e2e4");
-    expect(s.drill!.exploreFen).toBe(START);  // next attempt is judged from the drill start
+    expect(s.drill!.exploreFen).toBe(START); // next attempt is judged from the drill start
   });
 
   it("caps the line at PLAYOUT_PLIES and drops an illegal tail", async () => {
-    const long = { bestUci: "d7d5", scoreCp: 0, pv: ["d7d5", "c2c4", "d5c4", "e2e3", "e7e5", "g1f3", "e5d4", "f1c4", "g8f6", "e1g1", "b8c6", "c1g5"] };
+    const long = {
+      bestUci: "d7d5",
+      scoreCp: 0,
+      pv: ["d7d5", "c2c4", "d5c4", "e2e3", "e7e5", "g1f3", "e5d4", "f1c4", "g8f6", "e1g1", "b8c6", "c1g5"],
+    };
     const s = newCoachState();
     const { fx } = effects(REPORT, long);
     await call("start_drill", { tag: "hanging_piece" }, s, fx);
@@ -605,7 +759,9 @@ describe("review follow-ups", () => {
     const { fx } = effects(REPORT, null);
     await call("start_drill", { tag: "hanging_piece" }, s, fx);
     s.drill!.exploreFen = "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1"; // stalemate, Black to move
-    expect((await call("try_move", { move: "e5" }, s, fx)).error).toBe("The game is over in this position. Say reset to go back to the drill.");
+    expect((await call("try_move", { move: "e5" }, s, fx)).error).toBe(
+      "The game is over in this position. Say reset to go back to the drill.",
+    );
   });
 
   it("no engine reply message after an engine-down playout", async () => {
@@ -613,7 +769,9 @@ describe("review follow-ups", () => {
     const { fx } = effects(REPORT, null);
     await call("start_drill", { tag: "hanging_piece" }, s, fx);
     await call("try_move", { move: "e4" }, s, fx);
-    expect((await call("try_move", { move: "e5" }, s, fx)).error).toBe("No engine reply is available here. Say reset to go back to the drill.");
+    expect((await call("try_move", { move: "e5" }, s, fx)).error).toBe(
+      "No engine reply is available here. Say reset to go back to the drill.",
+    );
     await call("reset_position", {}, s, fx);
     expect((await call("try_move", { move: "e4" }, s, fx)).error).toBeUndefined();
   });
@@ -739,7 +897,15 @@ describe("get_profile", () => {
     kinds: { positional: 3, tactical: 9 },
     clock: { underThirtyShare: 0.1, mistakeRateUnder30: 3, mistakeRateOver30: 3 },
     grid: [],
-    patterns: [{ tag: "hanging_piece", count: 7, lastSeen: null, levels: { slip: 0, tricky: 0, deep: 0, unrated: 0 }, kinds: { positional: 0, tactical: 7 } }],
+    patterns: [
+      {
+        tag: "hanging_piece",
+        count: 7,
+        lastSeen: null,
+        levels: { slip: 0, tricky: 0, deep: 0, unrated: 0 },
+        kinds: { positional: 0, tactical: 7 },
+      },
+    ],
   };
 
   it("returns summary, ratings, strengths, leaks and top pattern, fetched once", async () => {
@@ -773,7 +939,10 @@ describe("review fixes", () => {
     await call("start_drill", { tag: "hanging_piece" }, s, fx);
     await call("play_move", { move: "d4" }, s, fx);
     let release!: () => void;
-    fx.animateLine = () => new Promise<void>((r) => { release = r; });
+    fx.animateLine = () =>
+      new Promise<void>((r) => {
+        release = r;
+      });
     const pending = call("next_move", {}, s, fx);
     await Promise.resolve();
     await call("reset_position", {}, s, fx); // interrupt
@@ -800,8 +969,12 @@ describe("review fixes", () => {
   it("fetch failures come back as errors, not exceptions", async () => {
     const s = newCoachState();
     const { fx } = effects();
-    fx.fetchReport = vi.fn(async () => { throw new Error("boom"); });
-    fx.fetchProfile = vi.fn(async () => { throw new Error("boom"); });
+    fx.fetchReport = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    fx.fetchProfile = vi.fn(async () => {
+      throw new Error("boom");
+    });
     expect((await call("get_report", {}, s, fx)).error).toBeDefined();
     expect((await call("get_profile", {}, s, fx)).error).toBeDefined();
   });
@@ -812,10 +985,14 @@ describe("review fixes", () => {
     const s = newCoachState();
     const { fx } = effects();
     fx.fetchProfile = vi.fn(async () => ({
-      username: "a", ratings: null, analyzed: { games: 3, moves: 90, from: null, to: null },
+      username: "a",
+      ratings: null,
+      analyzed: { games: 3, moves: 90, from: null, to: null },
       record: { white: { w: 1, d: 0, l: 1 }, black: { w: 1, d: 0, l: 0 } },
-      phases: { opening: 1, middlegame: 2, endgame: 3 }, kinds: { positional: 1, tactical: 20 },
-      clock: { underThirtyShare: 0, mistakeRateUnder30: 0, mistakeRateOver30: 0 }, grid: [],
+      phases: { opening: 1, middlegame: 2, endgame: 3 },
+      kinds: { positional: 1, tactical: 20 },
+      clock: { underThirtyShare: 0, mistakeRateUnder30: 0, mistakeRateOver30: 0 },
+      grid: [],
       patterns: [mk("time_trouble", 12), mk("other", 9), mk("hanging_piece", 4), mk("positional", 2)],
     }));
     expect((await call("get_profile", {}, s, fx)).topPattern).toMatchObject({ tag: "hanging_piece", count: 4 });

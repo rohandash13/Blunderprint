@@ -1,0 +1,46 @@
+{
+  "source": "Authentic production profile, report and engine reply, supplied to local Vite frontend as deterministic fetch fixtures",
+  "position": "P7iqfh7W ply 67",
+  "captures": [
+    {
+      "file": "legal-dots-desktop.png",
+      "viewportWidth": 1440,
+      "sha256": "6bf9d3f17c0ffa1446a6589ca83b455e6e92835aee32d4b5a9c409baa5d03f9b"
+    },
+    {
+      "file": "legal-dots-mobile.png",
+      "viewportWidth": 390,
+      "sha256": "dad7fd3404a9b56fdb6cf116d358dca3f4e17d898ad2746936057ba3119742fd"
+    },
+    {
+      "file": "review-start-desktop.png",
+      "viewportWidth": 1440,
+      "sha256": "d16d62fb6e3e15b2b4f9d9b8aa812d4fa5b068ceccff3c8046a1dfc6b5e4ecdc"
+    },
+    {
+      "file": "review-start-mobile.png",
+      "viewportWidth": 390,
+      "sha256": "d4b0571a6c9cd533dfbd6e4e9dc2958b0dea1f4104312fd873a3c1e4382b1999"
+    },
+    {
+      "file": "review-reply-desktop.png",
+      "viewportWidth": 1440,
+      "sha256": "209d411f37eaac111c336203008a110fe4f1f299dcccce71aec48ba2d5fbfa78"
+    },
+    {
+      "file": "review-reply-mobile.png",
+      "viewportWidth": 390,
+      "sha256": "d9896a156de8e26b675cfbbbbe5404d7c5f137605f71c996b5c1df28be31c660"
+    },
+    {
+      "file": "review-retry-desktop.png",
+      "viewportWidth": 1440,
+      "sha256": "d145c31ed0e3b54196e19ff92b7d8cb14c5ecf791e5f0c6b263bce2083170235"
+    },
+    {
+      "file": "review-retry-mobile.png",
+      "viewportWidth": 390,
+      "sha256": "b97d904a4c6c7a96d12647b2f1b596876a41ab50fea38651487d5af2c38cac28"
+    }
+  ]
+}

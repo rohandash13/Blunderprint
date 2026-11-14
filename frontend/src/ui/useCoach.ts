@@ -17,6 +17,7 @@ import { droppedMove, resolveBoardInput } from "./boardInput";
 import { parseMove } from "../chess/moveParse";
 import { uciOf } from "../chess/verdict";
 import { clockInputError, expireClock } from "../coach/drillClock";
+import { voiceOnboarding } from "../voice/onboarding";
 
 export const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 export type VoiceStatus = "idle" | "connecting" | "live" | "error";
@@ -33,7 +34,7 @@ export interface Caption {
 }
 
 /** Functions whose success puts a position on the board, so the app moves to the drill step. */
-const BOARD_FUNCTIONS = new Set(["start_drill", "show_mistake", "open_position"]);
+const BOARD_FUNCTIONS = new Set(["start_drill", "show_mistake", "open_position", "review_attempt", "retry_position"]);
 
 // Returns null for an illegal move so animations stop instead of throwing mid-line.
 function afterMove(fen: string, uci: string): string | null {
@@ -266,6 +267,17 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     }
     if (!failed && name === "show_mistake") setShownTag(String(args.tag ?? "") || null);
     if (!failed && BOARD_FUNCTIONS.has(name)) optsRef.current.onBoard?.();
+    if (
+      !failed &&
+      !viaVoice &&
+      statusRef.current === "live" &&
+      socket.current &&
+      ["start_drill", "review_attempt", "retry_position", "reset_position"].includes(name)
+    ) {
+      socket.current.injectUserMessage(
+        `Board event: ${name} already completed in the app. ${JSON.stringify(result)}. Narrate these facts without repeating that action. A preview is not a played move; call next_move before describing a reply.`,
+      );
+    }
     bump();
     return result;
   }
@@ -298,6 +310,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
         const role = String(e.role) === "user" ? "user" : "assistant";
         if (role === "user" && String(e.content).startsWith("Verified move result:")) break;
         if (role === "user" && String(e.content).startsWith("Clock event:")) break;
+        if (role === "user" && String(e.content).startsWith("Board event:")) break;
         const echo = role === "user" ? sentMessages.current.indexOf(String(e.content)) : -1;
         if (echo >= 0) {
           sentMessages.current.splice(echo, 1);
@@ -397,7 +410,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
       if (typeof body.token !== "string" || !body.token) throw new Error("The coach token response was empty");
       if (epoch !== sessionEpoch.current) throw new Error("The player session changed");
       recorder.current ??= new LatencyRecorder(DEFAULT_CONFIG.thinkModel);
-      const s: AgentSocket = new AgentSocket(buildSettings(DEFAULT_CONFIG, user, { history: prior, note, silent: !voiceWanted.current }), {
+      const s: AgentSocket = new AgentSocket(buildSettings(DEFAULT_CONFIG, user, { history: prior, note, silent: true }), {
         onEvent: (event) => {
           if (socket.current === s) void onEventRef.current(event, s);
         },
@@ -463,6 +476,9 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
         return;
       }
       setStatus("live");
+      const onboarding = voiceOnboarding(coach.current);
+      agent.updatePrompt(onboarding.context);
+      agent.injectAgentMessage(onboarding.introduction);
     } catch (err) {
       capture?.stop();
       if (request !== voiceRequest.current) return;
@@ -741,6 +757,8 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
       startClock: () => run("start_clock"),
       untimedPractice: () => run("untimed_practice"),
       retryClock: () => run("reset_position"),
+      reviewAttempt: () => run("review_attempt"),
+      retryPosition: () => run("retry_position"),
       hint,
       reveal,
       reset,

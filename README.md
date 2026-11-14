@@ -10,7 +10,7 @@ patterns (hanging pieces, missed tactics, endgame technique, ...), and opens a v
 on their own positions.
 
 The coach opens with **Profile → Choose focus → Drill**. The Club Wallchart shows patterns across recent games;
-click a mark to replay that position, or choose a pattern to practice. Drag pieces, type a move, or use voice. Engine lines advance one move at a time,
+click a mark to replay that position, or choose a pattern to practice. Click a piece to see legal destinations, drag pieces, type a move, or use voice. Ask where an attempt went wrong to review it on the board and try again. Engine lines advance one move at a time,
 with a caption for each move. New usernames can be analyzed on the public demo within its queue and daily limits.
 
 ![Blunderprint player profile and wallchart](docs/design/reviews/coach-input-polish/profile-controls.png)
