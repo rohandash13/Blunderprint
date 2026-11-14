@@ -18,6 +18,7 @@ const FILLER_WORDS = new Set([
 ]);
 const SQUARE = /^[a-h][1-8]$/;
 const FILE = /^[a-h]$/;
+const SPOKEN_FILES: Record<string, string> = {ay:"a",bee:"b",see:"c",sea:"c",dee:"d",ee:"e",eff:"f",gee:"g",aitch:"h"};
 
 type MoveInput = string | { from: string; to: string; promotion?: string };
 
@@ -41,7 +42,7 @@ export function tokenize(input: string): string[] {
     .map((t) => NUMBER_WORDS[t] ?? t);
   const out: string[] = [];
   for (let i = 0; i < raw.length; i++) {
-    const t = raw[i];
+    const t = /^[1-8]$/.test(raw[i + 1] ?? "") ? SPOKEN_FILES[raw[i]] ?? raw[i] : raw[i];
     const next = raw[i + 1];
     if (FILE.test(t) && next !== undefined && /^[1-8]$/.test(next)) {
       out.push(t + next);

@@ -1,0 +1,47 @@
+{
+  "source": "Local Vite frontend; authentic post-rescore production profile/report JSON supplied by isolated headless review fixtures",
+  "voice": "Token request held pending for panel screenshots; these are layout checks, not microphone verification",
+  "drag": "HTML5 drag/drop events on real react-chessboard elements; g5-g4; engine continuation checked against local backend",
+  "captures": [
+    {
+      "file": "profile-controls.png",
+      "sha256": "70deb05804b5967fe1e6c6d4d3f2fd9162953798d8d097c480befc90be239dae",
+      "viewportWidth": 1440
+    },
+    {
+      "file": "profile-controls-mobile.png",
+      "sha256": "f5709db362eb9830c0422fdfcd3af46427fc561c535b3067447ce3f3b8a63075",
+      "viewportWidth": 390
+    },
+    {
+      "file": "conversation-profile.png",
+      "sha256": "9fb7d7a10fbb527c0fe1a8ca5606fec53469477757e26f583cfe56b09cd26aaf",
+      "viewportWidth": 1440
+    },
+    {
+      "file": "conversation-profile-mobile.png",
+      "sha256": "5e1b5a49a26e849cb08d0829c7e75062694407f9237144ad34fed446019802c1",
+      "viewportWidth": 390
+    },
+    {
+      "file": "conversation-focus.png",
+      "sha256": "169a943b9835824e3374253597d6fc85ed8bf5ecfbcc8ceaef976420ad03d876",
+      "viewportWidth": 1440
+    },
+    {
+      "file": "conversation-focus-mobile.png",
+      "sha256": "bd96749561c68d0ba601bd44d2de1dd51965cb662d904e9a307653925acc9d0b",
+      "viewportWidth": 390
+    },
+    {
+      "file": "drag-desktop.png",
+      "sha256": "723ed54a08f3810ba28f648ecb587f0e5a29d0890c21aca3ba1dddc4561efcc5",
+      "viewportWidth": 1440
+    },
+    {
+      "file": "drag-mobile.png",
+      "sha256": "5a053044d293b2e66ddaf85709010bdb6cd8d7888f3eaac19b6e16664d9170cf",
+      "viewportWidth": 390
+    }
+  ]
+}

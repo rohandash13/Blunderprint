@@ -1,66 +1,70 @@
 {
   "username": "Knight_ofthelight73",
-  "candidates": 77,
+  "base_url": "https://useblunderprint.vercel.app",
+  "candidates": 160,
   "levels": {
     "slip": {
-      "count": 35,
-      "share": 0.4545,
-      "avg_win_drop": 0.1616,
+      "count": 85,
+      "share": 0.5312,
+      "avg_win_drop": 0.1379,
       "by_kind": {
-        "positional": 24,
-        "tactical": 11
+        "positional": 68,
+        "tactical": 17
       },
       "by_pattern": {
-        "positional": 21,
-        "time_trouble": 5,
-        "other": 4,
-        "hanging_piece": 3,
+        "positional": 54,
+        "time_trouble": 10,
+        "other": 10,
+        "hanging_piece": 9,
         "missed_tactic": 2
       }
     },
     "tricky": {
-      "count": 19,
-      "share": 0.2468,
-      "avg_win_drop": 0.1222,
+      "count": 33,
+      "share": 0.2062,
+      "avg_win_drop": 0.1288,
       "by_kind": {
-        "positional": 16,
+        "positional": 30,
         "tactical": 3
       },
       "by_pattern": {
-        "positional": 13,
-        "hanging_piece": 2,
+        "positional": 24,
+        "hanging_piece": 4,
+        "time_trouble": 3,
         "other": 1,
-        "missed_tactic": 1,
-        "opening_error": 1,
-        "time_trouble": 1
+        "opening_error": 1
       }
     },
     "deep": {
-      "count": 9,
-      "share": 0.1169,
-      "avg_win_drop": 0.122,
+      "count": 15,
+      "share": 0.0938,
+      "avg_win_drop": 0.1071,
       "by_kind": {
-        "tactical": 5,
-        "positional": 4
+        "positional": 12,
+        "tactical": 3
       },
       "by_pattern": {
-        "positional": 4,
-        "time_trouble": 2,
-        "endgame_technique": 1,
-        "other": 1,
-        "missed_tactic": 1
+        "positional": 10,
+        "other": 2,
+        "missed_tactic": 1,
+        "hanging_piece": 1,
+        "time_trouble": 1
       }
     },
     "unrated": {
-      "count": 14,
-      "share": 0.1818,
-      "avg_win_drop": 0.1162,
+      "count": 27,
+      "share": 0.1688,
+      "avg_win_drop": 0.0942,
       "by_kind": {
-        "positional": 14
+        "positional": 25,
+        "tactical": 2
       },
       "by_pattern": {
-        "positional": 13,
-        "hanging_piece": 1
+        "positional": 19,
+        "hanging_piece": 3,
+        "time_trouble": 3,
+        "missed_tactic": 1,
+        "other": 1
       }
     }
   }

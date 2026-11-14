@@ -1,5 +1,5 @@
 import { canGo, type FlowState, type Step } from "../flow/flow";
-import { Emblem, MicIcon, StopIcon } from "./Icons";
+import { ConversationIcon, Emblem, MicIcon, StopIcon } from "./Icons";
 import type { VoiceStatus } from "./useCoach";
 
 const STEPS: { step: Step; name: string }[] = [
@@ -26,6 +26,7 @@ interface Props {
     start(): void;
     stop(): void;
     exportSession(): void;
+    showConversation?: () => void;
   };
 }
 
@@ -70,7 +71,13 @@ export function Rail({ flow, onGo, onHome, voice }: Props) {
             Stop voice
           </button>
         ) : (
-          <button type="button" className="btn btn-rail" onClick={voice.start} disabled={!canVoice || voice.status === "connecting"} title={canVoice ? "Talk to the coach. Headphones help." : "Load a player first"}>
+          <button
+            type="button"
+            className="btn btn-rail"
+            onClick={voice.start}
+            disabled={!canVoice || voice.status === "connecting"}
+            title={canVoice ? "Talk to the coach. Headphones help." : "Load a player first"}
+          >
             <MicIcon />
             {voice.status === "connecting" ? "Connecting…" : voice.status === "error" ? "Reconnect voice" : "Start voice"}
           </button>
@@ -83,6 +90,18 @@ export function Rail({ flow, onGo, onHome, voice }: Props) {
         {voice.canExport && (
           <button type="button" className="linkish rail-link" onClick={voice.exportSession}>
             Export latency
+          </button>
+        )}
+        {voice.showConversation && (
+          <button
+            type="button"
+            className="linkish rail-link show-conversation"
+            aria-label="Show conversation"
+            data-conversation-toggle
+            onClick={voice.showConversation}
+          >
+            <ConversationIcon />
+            <span>Show conversation</span>
           </button>
         )}
       </div>

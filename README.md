@@ -10,10 +10,10 @@ patterns (hanging pieces, missed tactics, endgame technique, ...), and opens a v
 on their own positions.
 
 The coach opens with **Profile → Choose focus → Drill**. The Club Wallchart shows patterns across recent games;
-click a mark to replay that position, or choose a pattern to practice. Engine lines advance one move at a time,
+click a mark to replay that position, or choose a pattern to practice. Drag pieces, type a move, or use voice. Engine lines advance one move at a time,
 with a caption for each move. New usernames can be analyzed on the public demo within its queue and daily limits.
 
-![Blunderprint player profile and wallchart](docs/design/reviews/coach-ui-v3/desktop.png)
+![Blunderprint player profile and wallchart](docs/design/reviews/coach-input-polish/profile-controls.png)
 
 The visual system and responsive behavior are documented in [DESIGN.md](DESIGN.md), with
 [desktop and phone review captures](docs/design/reviews/2026-11-13-coach-ui-v3.md).
@@ -46,7 +46,7 @@ The visual system and responsive behavior are documented in [DESIGN.md](DESIGN.m
   predicts what a player at a given rating would play. A mistake the model rates as *likely* for the player's
   rating is a habit worth drilling, not a one-off.
 - **Voice coach (React + Deepgram).** The browser talks to Deepgram's Voice Agent API directly with a short-lived
-  token minted by the backend. The LLM never judges chess: eleven client-side functions (`play_move`,
+  token minted by the backend. The LLM never judges chess: client-side functions (`play_move`,
   `get_hint`, `explain_line`, `try_move`, ...) compute verdicts, hints and engine lines in code and hand the
   agent facts to narrate. Hints follow a ladder (idea → piece → square); the answer is revealed only when the
   player asks.
@@ -61,7 +61,7 @@ The visual system and responsive behavior are documented in [DESIGN.md](DESIGN.m
   including a new **positional** pattern; clock errors stay out of drills; and the coach describes difficulty in
   words ("a quiet positional move, the kind that's hard to find even at your level"), never percentages.
 - **Line playout.** Every move the player suggests plays on the board, followed by up to 9 plies, ending with you to move, of the engine's
-  best line (blue for the opponent, green for the player) and a plain-language eval ("Your opponent has a clear
+  best line, one move at a time with a marker-red arrow and caption, and a plain-language eval ("Your opponent has a clear
   edge, about 2 pawns"). ◀ ▶ and the arrow keys step through it; so does saying "go back".
 
 ## Results
@@ -73,7 +73,7 @@ Every number below is produced by a script in this repo; the output files are in
 | Move prediction, masked top-1 on 50K held-out positions from 2026-10 (player-disjoint split, 5M training positions) | **43.85% CNN** vs 35.21% retrained MLP vs 26.28% deployed MLP vs 6.78% uniform; CNN wins every rating bucket | `cd ml && python -m blunderprint_ml.evaluate --data data/lichess_2026-10 --ckpt mlp_2016=checkpoints/mlp.pt --ckpt mlp_2026=checkpoints/mlp_2026.pt --ckpt cnn=checkpoints/cnn.pt` → `results/model_eval.json`; rebuild/training commands in [ml/EXPERIMENT.md](ml/EXPERIMENT.md) |
 | Analysis throughput, 30 games at depth 12 | **44 → 120 positions/sec** from 1 to 8 workers | `python scripts/loadtest.py` → `results/loadtest_batched.json` |
 | Batched DB writes | database share of worker time **26% → 9%** | `results/loadtest_timing.json` vs `results/loadtest_batched.json` |
-| Difficulty of a 2400+-rated blitz player's 77 repeatable mistakes | of the 63 the engine trace could rate: **56%** slips, 30% tricky, 14% deep for that rating; **75%** of all 77 have a quiet, non-tactical best move | `curl -X POST localhost:8080/admin/players/Knight_ofthelight73/rescore`, then `python scripts/difficulty_report.py --username Knight_ofthelight73` → `results/difficulty_levels.json` |
+| Difficulty of the sample player's repeatable mistakes after CNN rescoring | **160** candidates: 85 slips, 33 tricky, 15 deep, 27 unrated | `python scripts/difficulty_report.py --username Knight_ofthelight73 --base-url https://useblunderprint.vercel.app` → `results/difficulty_levels.json` |
 
 ## Running locally
 
@@ -134,7 +134,7 @@ Neon Postgres. `render.yaml` is the Blueprint for both Render services.
 
 - Backend env: `DATABASE_URL` (Neon `postgresql://user:pass@host/db?sslmode=require`), `DEEPGRAM_API_KEY`,
   `MODEL_HOSTPORT` (set from the model service), `DEMO_MODE`, `WORKERS_COUNT`, `JAVA_OPTS`.
-- `DEMO_MODE=true` returns 403 for `/admin/**` and `POST /analysis`, and `GET /voice/token` is rate-limited
+- `DEMO_MODE=true` blocks `/admin/**` and re-enqueue routes. Public `POST /analysis` is queued and rate-limited; `GET /voice/token` is rate-limited
   (`voice.rate.per-ip-per-hour`, default 20, and `voice.rate.per-day`, default 300).
 
 

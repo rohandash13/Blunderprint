@@ -13,6 +13,9 @@ import { LatencyRecorder } from "../latency/recorder";
 import type { Profile } from "../profile/types";
 import type { Example, Level, Report } from "../types";
 import { describeResult } from "./coachText";
+import { droppedMove, resolveBoardInput } from "./boardInput";
+import { parseMove } from "../chess/moveParse";
+import { uciOf } from "../chess/verdict";
 
 export const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 export type VoiceStatus = "idle" | "connecting" | "live" | "error";
@@ -50,6 +53,11 @@ export interface CoachOptions {
 
 export function useCoach(username: string, opts: CoachOptions = {}) {
   const [fen, setFen] = useState(START);
+  const visibleFen = useRef(START);
+  const showFen = (next: string) => {
+    visibleFen.current = next;
+    setFen(next);
+  };
   const [arrows, setArrows] = useState<Arrow[]>([]);
   const [flash, setFlash] = useState<string[]>([]);
   const [linePos, setLinePos] = useState<{ ply: number; total: number } | null>(null);
@@ -61,6 +69,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
   const [reportError, setReportError] = useState<string | null>(null);
   const [caption, setCaption] = useState<Caption | null>(null);
   const [busy, setBusy] = useState(false);
+  const [checkingMove, setCheckingMove] = useState(false);
   /** Pattern of the example shown with show_mistake, so it can be drilled as is. */
   const [shownTag, setShownTag] = useState<string | null>(null);
   const [, bump] = useReducer((x: number) => x + 1, 0);
@@ -76,6 +85,9 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
   const reportReq = useRef(0);
   const lineId = useRef(0);
   const stepping = useRef(false);
+  const submitting = useRef(false);
+  const manualDrop = useRef<{ fen: string; uci: string } | null>(null);
+  const verifiedMove = useRef<{ fen: string; uci: string; result: unknown } | null>(null);
   /** Caption per board frame of the current line, so stepping back shows what was said there. */
   const frameCaptions = useRef(new Map<number, string>());
   const userRef = useRef(username);
@@ -90,7 +102,9 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
 
   const clearBoard = () => {
     queue.current.cancel();
-    setFen(START);
+    showFen(START);
+    verifiedMove.current = null;
+    manualDrop.current = null;
     setArrows([]);
     setFlash([]);
     setCaption(null);
@@ -109,7 +123,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     // Setting a static position (reset, drill, show) cancels any running animation.
     showPosition: (f, a) => {
       queue.current.cancel();
-      setFen(f);
+      showFen(f);
       setArrows(a ?? []);
       setFlash([]);
       history.current.reset({ fen: f, arrows: a ?? [] });
@@ -119,11 +133,11 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
       queue.current.run(async (ctx) => {
         let cur = f;
         history.current.begin(f);
-        setFen(cur);
+        showFen(cur);
         setFlash([]);
         for (let k = 0; k < ucis.length; k++) {
           const u = ucis[k];
-          const color = Array.isArray(colors) ? colors[k] ?? colors[colors.length - 1] : colors;
+          const color = Array.isArray(colors) ? (colors[k] ?? colors[colors.length - 1]) : colors;
           const a = [arrowOf(u, color)];
           setArrows(a);
           await ctx.sleep(450);
@@ -131,17 +145,31 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
           const next = afterMove(cur, u);
           if (!next) return;
           cur = next;
-          setFen(cur);
+          showFen(cur);
           history.current.push({ fen: cur, arrows: a });
           syncLinePos();
           await ctx.sleep(450);
           if (ctx.cancelled()) return;
         }
       }),
-    flashMove: (f, uci) =>
-      queue.current.run(async (ctx) => {
+    flashMove: (f, uci) => {
+      const drop = manualDrop.current;
+      manualDrop.current = null;
+      if (drop?.fen === f && drop.uci === uci) {
+        queue.current.cancel();
+        const arrows = [arrowOf(uci, PLAYED)];
+        const next = afterMove(f, uci) ?? f;
         history.current.reset({ fen: f, arrows: [] });
-        setFen(f);
+        history.current.push({ fen: next, arrows });
+        showFen(next);
+        setArrows(arrows);
+        setFlash([]);
+        syncLinePos();
+        return Promise.resolve();
+      }
+      return queue.current.run(async (ctx) => {
+        history.current.reset({ fen: f, arrows: [] });
+        showFen(f);
         setArrows([arrowOf(uci, PLAYED)]);
         setFlash([uci.slice(0, 2), uci.slice(2, 4)]);
         await ctx.sleep(600);
@@ -149,10 +177,11 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
         setFlash([]);
         const next = afterMove(f, uci) ?? f;
         setArrows([arrowOf(uci, PLAYED)]);
-        setFen(next);
+        showFen(next);
         history.current.push({ fen: next, arrows: [arrowOf(uci, PLAYED)] });
         syncLinePos();
-      }),
+      });
+    },
     // Any failure (backend down, network error, bad body) means "no engine answer".
     analyze: async (f) => {
       try {
@@ -177,7 +206,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
       const frame = history.current.step(dir);
       if (!frame) return null;
       queue.current.cancel();
-      setFen(frame.fen);
+      showFen(frame.fen);
       setArrows(frame.arrows);
       setFlash([]);
       syncLinePos();
@@ -187,6 +216,9 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
 
   /** Every coach function goes through here, from voice or from a button, so the screen reflects its result. */
   async function run(name: string, args: Record<string, unknown> = {}, viaVoice = false): Promise<unknown> {
+    if (!["get_profile", "get_report", "get_hint", "play_move", "try_move"].includes(name)) verifiedMove.current = null;
+    const checking = name === "play_move" || name === "try_move";
+    if (checking) setCheckingMove(true);
     const isNext = name === "next_move";
     if (isNext) stepping.current = true;
     if (!viaVoice) setBusy(true);
@@ -196,6 +228,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     } catch (err) {
       result = { error: err instanceof Error ? err.message : String(err) };
     } finally {
+      if (checking) setCheckingMove(false);
       if (isNext) stepping.current = false;
       if (!viaVoice) setBusy(false);
     }
@@ -249,6 +282,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     switch (e.type) {
       case "ConversationText": {
         const role = String(e.role) === "user" ? "user" : "assistant";
+        if (role === "user" && String(e.content).startsWith("Verified move result:")) break;
         const content = role === "user" ? cleanUserLine(String(e.content), coach.current.drill?.exploreFen ?? null) : String(e.content);
         if (content) addLine(role, content);
         break;
@@ -269,7 +303,35 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
           } catch {
             // run with no arguments; the function reports what is missing
           }
-          const result = await run(f.name, args, true);
+          let result: unknown;
+          if (f.name === "play_move" || f.name === "try_move") {
+            const saved = verifiedMove.current;
+            const parsed = saved ? parseMove(saved.fen, String(args.move ?? "")) : null;
+            if (saved && parsed && uciOf(parsed) === saved.uci) {
+              result = saved.result;
+              verifiedMove.current = null;
+            } else if (submitting.current || checkingMove) {
+              result = { error: "The app is checking a move. Wait for its verified result." };
+            } else {
+              const input = resolveBoardInput(coach.current, visibleFen.current, String(args.move ?? ""));
+              if (input) {
+                if (input.name === "try_move" && coach.current.drill) {
+                  coach.current.pending = null;
+                  coach.current.drill.exploreFen = input.fen;
+                  coach.current.drill.awaitingReply = false;
+                }
+                result = await run(input.name, { move: input.uci }, true);
+              } else
+                result = {
+                  verdict: "illegal",
+                  reason:
+                    "I couldn't match that phrase to one legal move on the current board. Please name the piece and destination.",
+                };
+            }
+          } else {
+            if (!["get_profile", "get_report", "get_hint"].includes(f.name)) verifiedMove.current = null;
+            result = await run(f.name, args, true);
+          }
           if (!cancelled.current.has(f.id)) s.respond(f.id, f.name, JSON.stringify(result));
         }
         break;
@@ -360,12 +422,50 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
 
   async function playTyped(move: string) {
     const m = move.trim();
-    if (!m) return;
-    if (say(`I play ${m}`)) return;
+    if (!m || submitting.current || checkingMove) return;
     addLine("user", m);
-    const d = coach.current.drill;
-    // Before the drill is solved a move is an attempt; afterwards it explores from the board.
-    await run(d && !d.solved && !d.revealed ? "play_move" : "try_move", { move: m });
+    const input = resolveBoardInput(coach.current, visibleFen.current, m);
+    if (!input) {
+      manualDrop.current = null;
+      const reason =
+        "I couldn't match that to a legal move on this board. Check whose turn it is, or use Reset to retry the original position.";
+      addLine("coach", reason);
+      setCaption({ text: reason, ply: null });
+      return;
+    }
+    submitting.current = true;
+    verifiedMove.current = null;
+    try {
+      if (input.name === "try_move" && coach.current.drill) {
+        coach.current.pending = null;
+        coach.current.drill.exploreFen = input.fen;
+        coach.current.drill.awaitingReply = false;
+      }
+      const result = await run(input.name, { move: input.uci });
+      if (statusRef.current === "live" && socket.current) {
+        verifiedMove.current = { fen: input.fen, uci: input.uci, result };
+        socket.current.injectUserMessage(
+          `Verified move result: ${JSON.stringify(result)}. The app already validated and played this move. Narrate these facts; do not replay or rejudge it. Continue with next_move one ply at a time if there is a reply.`,
+        );
+      }
+    } finally {
+      submitting.current = false;
+      manualDrop.current = null;
+    }
+  }
+
+  function playBoard(from: string, to: string, promotion = "q"): boolean {
+    if (submitting.current || busy || checkingMove) return false;
+    const move = droppedMove(visibleFen.current, from, to, promotion);
+    const input = move ? resolveBoardInput(coach.current, visibleFen.current, move) : null;
+    if (!input) return false;
+    manualDrop.current = { fen: input.fen, uci: input.uci };
+    void playTyped(input.san);
+    return true;
+  }
+
+  function sendMessage(text: string) {
+    return say(text.trim());
   }
 
   const hint = () => (say("Can I have a hint?") ? undefined : void run("get_hint"));
@@ -485,6 +585,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     report,
     reportError,
     busy,
+    checkingMove,
     drill: c.drill,
     lastShown: c.lastShown,
     shownTag,
@@ -493,6 +594,8 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
       next,
       prev,
       playTyped,
+      playBoard,
+      sendMessage,
       hint,
       reveal,
       reset,

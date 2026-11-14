@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Chessboard } from "react-chessboard";
+import { Chess } from "chess.js";
 import type { Arrow as CbArrow } from "react-chessboard/dist/chessboard/types";
 import { patternLabel } from "../coach/patternLabels";
 import type { Level } from "../types";
 import { CoachPanel } from "./CoachPanel";
 import { ChevronLeft, ChevronRight } from "./Icons";
 import type { Coach } from "./useCoach";
+import { useReducedMotion } from "./useReducedMotion";
 
 const LEVEL_WORD: Record<Level, string> = { slip: "Slip", tricky: "Tricky", deep: "Deep", unrated: "Not yet rated" };
 const MAX_BOARD = 600;
@@ -33,6 +35,8 @@ interface Props {
 export function Drill({ coach, onChoose, onLevels }: Props) {
   const { drill, lastShown, fen, arrows, flash, linePos, pendingLeft, caption, actions } = coach;
   const [wrapRef, wrapW] = useWidth<HTMLDivElement>();
+  const reduceMotion = useReducedMotion();
+  const [dragFrom, setDragFrom] = useState<string | null>(null);
   const ex = drill?.example ?? lastShown;
   const tag = drill?.tag ?? coach.shownTag;
 
@@ -71,12 +75,20 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
   const toMove = ex.fen.split(" ")[1] === "w" ? "White" : "Black";
   const moveNo = Number(ex.fen.split(" ")[5] ?? 1);
   const squareStyles: Record<string, CSSProperties> = {};
+  if (dragFrom) {
+    try {
+      for (const move of new Chess(fen).moves({ verbose: true }).filter((move) => move.from === dragFrom))
+        squareStyles[move.to] = { boxShadow: "inset 0 0 0 4px rgba(31,77,58,.4)" };
+    } catch {
+      /* position changed during the drag */
+    }
+  }
   for (const sq of flash) squareStyles[sq] = { background: "rgba(215, 38, 61, 0.42)" };
 
   const total = (linePos?.total ?? 0) + pendingLeft;
   const ply = linePos?.ply ?? 0;
-  const canPrev = ply > 0;
-  const canNext = (linePos ? linePos.ply < linePos.total : false) || pendingLeft > 0;
+  const canPrev = ply > 0 && !coach.checkingMove;
+  const canNext = !coach.checkingMove && ((linePos ? linePos.ply < linePos.total : false) || pendingLeft > 0);
   const boardW = Math.max(240, Math.min(MAX_BOARD, wrapW));
   const title = tag ? patternLabel(tag).name : "A mistake from your game";
 
@@ -104,8 +116,16 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
               position={fen}
               boardWidth={boardW}
               boardOrientation={toMove === "White" ? "white" : "black"}
-              arePiecesDraggable={false}
-              animationDuration={260}
+              arePiecesDraggable={!!drill && !coach.busy && !coach.checkingMove && fen.split(" ")[1] === ex.fen.split(" ")[1]}
+              isDraggablePiece={({ piece }) => piece[0] === fen.split(" ")[1]}
+              onPieceDragBegin={(_piece, square) => setDragFrom(square)}
+              onPieceDragEnd={() => setDragFrom(null)}
+              onPieceDrop={(from, to) => {
+                setDragFrom(null);
+                return actions.playBoard(from, to);
+              }}
+              onPromotionPieceSelect={(piece, from, to) => !!piece && !!from && !!to && actions.playBoard(from, to, piece[1].toLowerCase())}
+              animationDuration={reduceMotion ? 0 : 260}
               customSquareStyles={squareStyles}
               customArrows={arrows as CbArrow[]}
               customLightSquareStyle={{ backgroundColor: "#F0D9B5" }}
@@ -117,7 +137,14 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
         </div>
 
         <div className="caption-strip" style={{ maxWidth: boardW }}>
-          <button type="button" className="btn btn-icon" onClick={actions.prev} disabled={!canPrev} aria-label="Previous move" title="Previous move (Left arrow)">
+          <button
+            type="button"
+            className="btn btn-icon"
+            onClick={actions.prev}
+            disabled={!canPrev}
+            aria-label="Previous move"
+            title="Previous move (Left arrow)"
+          >
             <ChevronLeft />
           </button>
           <div className="caption-body">
@@ -125,10 +152,21 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
               {total ? `${ply} / ${total}` : "0 / 0"}
             </span>
             <p className="caption-text">
-              {caption?.text ?? "Find the move you should have played. Type it, or say it with voice on."}
+              {caption?.text ??
+                (drill
+                  ? "Find the stronger move. Drag a piece, type a move, or say it with voice on."
+                  : coach.shownTag === "time_trouble"
+                    ? "Clock mistakes can be viewed, but aren't drilled."
+                    : "Your move and the stronger one are shown. Choose Drill this position to play your own moves.")}
             </p>
           </div>
-          <button type="button" className="btn btn-next" onClick={() => void actions.next()} disabled={!canNext} title="Next move (Right arrow)">
+          <button
+            type="button"
+            className="btn btn-next"
+            onClick={() => void actions.next()}
+            disabled={!canNext}
+            title="Next move (Right arrow)"
+          >
             Next
             <ChevronRight />
           </button>

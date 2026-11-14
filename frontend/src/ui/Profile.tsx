@@ -115,7 +115,7 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
         <BlunderprintGrid profile={profile} levels={levels} onLevels={onLevels} onOpen={onOpenMark} opening={openingMark} error={markError} />
       </div>
 
-      <aside className="profile-side" aria-label="Strengths, leaks and where to start">
+      <aside className="profile-side" aria-label="Strengths, weaknesses and where to start">
         <section className="panel side-card" aria-labelledby="strengths-title" ref={strengthsRef}>
           <div className="snap-inner">
           <h2 id="strengths-title">Strengths</h2>
@@ -139,7 +139,7 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
 
         <section className="panel side-card" aria-labelledby="leaks-title" ref={leaksRef}>
           <div className="snap-inner">
-          <h2 id="leaks-title">Leaks</h2>
+          <h2 id="leaks-title">Weaknesses</h2>
           {leaks.length ? (
             <ul className="insights">
               {leaks.map((s) => (
@@ -153,7 +153,7 @@ export function Profile({ profile, report, levels, onLevels, onOpenMark, opening
               ))}
             </ul>
           ) : (
-            <p className="empty">No repeating leak stands out.</p>
+            <p className="empty">No recurring weakness stands out.</p>
           )}
           </div>
         </section>

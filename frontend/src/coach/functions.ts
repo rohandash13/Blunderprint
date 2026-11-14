@@ -32,7 +32,7 @@ const NO_ARGS = { type: "object" as const, properties: {} };
 export const FUNCTION_DEFS: FunctionDef[] = [
   {
     name: "get_profile",
-    description: "Get an overview of the player: a written summary, their ratings, strengths, leaks and the pattern worth working on first. Call this first in a session, then give a two to three sentence overview and offer focus choices.",
+    description: "Get an overview of the player: a written summary, their ratings, strengths, weaknesses and the pattern worth working on first. Call this first in a session, then give a two to three sentence overview and offer focus choices.",
     parameters: NO_ARGS,
   },
   {
