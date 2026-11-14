@@ -8,7 +8,9 @@ The model uses six residual blocks, 64 channels, a 32-plane policy head, and a 1
 
 ## Reproduce
 
-Run from this worktree's `ml/` directory with `PYTHONPATH=src`; the main checkout's editable install points at different source code. In PowerShell, use `$env:PYTHONPATH='src'` before invoking the selected Python executable. The main checkout's `.venv` is CPU-only. CUDA was verified on the RTX 3050 using torch 2.7.1+cu118; the newer cu126 build does not work with this laptop's driver.
+Run from the checkout's `ml/` directory with `PYTHONPATH=src` so an editable installation from another worktree cannot select the wrong source. In PowerShell, use `$env:PYTHONPATH='src'` before invoking the selected Python executable. The main checkout's `.venv` is CPU-only. CUDA was verified on the RTX 3050 using torch 2.7.1+cu118; the newer cu126 build does not work with this laptop's driver.
+
+CUDA accelerates the repeated convolution and gradient calculations during offline training. PyTorch selects the GPU when available; the CNN uses channels-last layout and GPU autocast with bfloat16, while cross-entropy is computed from float logits. Packed board tensors are decoded for each batch. These are PyTorch operations, not custom CUDA kernels, and no measured GPU-versus-CPU training speedup is claimed. The production Docker image installs CPU-only PyTorch and serves the checkpoint on CPU.
 
 ```bash
 PYTHONPATH=src python -m blunderprint_ml.data 2026-10 --out data/lichess_2026-10 --train 5000000 --val 20000 --test 50000 --sample-prob 0.15 --high-elo-boost 4 --workers 14
@@ -38,4 +40,4 @@ Measured on Docker Desktop's Linux VM: 219.9 MiB after the single-move request, 
 
 ## Rollout requires rescoring
 
-Do not merge without reviewing the model swap: changing `p_played` and `p_best` changes the habit filter (`min-p-played=0.15`) and therefore existing player reports. Existing runs need `POST /admin/players/{username}/rescore` against a local backend configured for the intended database. The public service blocks `/admin`; rescoring Neon needs a separately arranged step. No production database was accessed or rescored during this work.
+Changing `p_played` and `p_best` changes the habit filter (`min-p-played=0.15`) and therefore existing player reports. Existing runs need `POST /admin/players/{username}/rescore` against a local backend configured for the intended database. The public service blocks `/admin`; rescoring Neon requires a separate maintenance step. The initial model experiment did not touch production. A subsequent authorized rollout rescored the existing players; that evidence is recorded in [production_rescore.json](../results/production_rescore.json) and [the rollout review](../docs/design/reviews/2026-11-13-coach-input-polish.md).

@@ -13,4 +13,4 @@ The sample drill currently has Black's rook on e6, so rook to f6 is a legal atte
 
 Let the coach finish each response in the finished video. The wrong move should stop, the explanation should show one reply only when requested, and retry should hide the answer. Include browser audio and the recorded questions, with no doubled presenter or coach tracks. Use the deployed app at https://useblunderprint.vercel.app.
 
-Status: awaiting the user's audio. No replacement MP4 has been produced yet.
+Status: recorded and verified using the supplied voice recording. The replacement video and workflow are available in [the demo guide](demo/README.md).
