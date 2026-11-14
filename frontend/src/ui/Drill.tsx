@@ -85,7 +85,7 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
   const clock = drill?.clock;
   const covered = clock?.status === "ready";
   const clockBlocked = covered || clock?.status === "expired";
-  const canMove = !!drill && !clockBlocked && !coach.busy && !coach.checkingMove && fen.split(" ")[1] === ex.fen.split(" ")[1];
+  const canMove = !!drill && !clockBlocked && !coach.busy && !coach.checkingMove && !coach.narrating && fen.split(" ")[1] === ex.fen.split(" ")[1];
   const squareStyles: Record<string, CSSProperties> = {};
   const from = dragFrom ?? selected;
   if (from && canMove) {
@@ -105,8 +105,8 @@ export function Drill({ coach, onChoose, onLevels }: Props) {
 
   const total = (linePos?.total ?? 0) + pendingLeft;
   const ply = linePos?.ply ?? 0;
-  const canPrev = ply > 0 && !coach.checkingMove;
-  const canNext = !coach.checkingMove && ((linePos ? linePos.ply < linePos.total : false) || pendingLeft > 0);
+  const canPrev = ply > 0 && !coach.checkingMove && !coach.narrating;
+  const canNext = !coach.checkingMove && !coach.narrating && ((linePos ? linePos.ply < linePos.total : false) || pendingLeft > 0);
   const boardW = Math.max(240, Math.min(MAX_BOARD, wrapW));
   const title = tag ? patternLabel(tag).name : "A mistake from your game";
   const clickSquare = (square: string) => {

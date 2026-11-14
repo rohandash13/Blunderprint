@@ -18,6 +18,7 @@ import { parseMove } from "../chess/moveParse";
 import { uciOf } from "../chess/verdict";
 import { clockInputError, expireClock } from "../coach/drillClock";
 import { voiceOnboarding } from "../voice/onboarding";
+import { GuidedPacing, PACED_FUNCTIONS } from "../voice/guidedPacing";
 
 export const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 export type VoiceStatus = "idle" | "connecting" | "live" | "error";
@@ -74,6 +75,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
   const [checkingMove, setCheckingMove] = useState(false);
   const [clockNow, setClockNow] = useState(Date.now);
   const [chatConnecting, setChatConnecting] = useState(false);
+  const [narrating, setNarrating] = useState(false);
   /** Pattern of the example shown with show_mistake, so it can be drilled as is. */
   const [shownTag, setShownTag] = useState<string | null>(null);
   const [, bump] = useReducer((x: number) => x + 1, 0);
@@ -87,6 +89,25 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
   const voiceRequest = useRef(0);
   const linesRef = useRef<TranscriptLine[]>([]);
   const sentMessages = useRef<string[]>([]);
+  const pacing = useRef(new GuidedPacing());
+  const boardInFlight = useRef(false);
+
+  const stopExplanation = () => {
+    pacing.current.interrupt();
+    setNarrating(false);
+  };
+  const speakResult = (name: string, result: unknown) => {
+    if (statusRef.current !== "live" || !socket.current || !PACED_FUNCTIONS.has(name)) return;
+    if (name === "start_clock") return; // Preserve the short decision budget for the player.
+    if (result && typeof result === "object" && "waitingForPlayer" in result) return;
+    const actualName = result && typeof result === "object" && "yourMove" in result ? "try_move" : name;
+    const text = describeResult(actualName, result);
+    if (!text) return;
+    player.current?.stop();
+    pacing.current.begin(text);
+    setNarrating(true);
+    socket.current.injectAgentMessage(text);
+  };
   const mic = useRef<Mic | null>(null);
   const player = useRef<Player | null>(null);
   const recorder = useRef<LatencyRecorder | null>(null);
@@ -231,6 +252,16 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
 
   /** Every coach function goes through here, from voice or from a button, so the screen reflects its result. */
   async function run(name: string, args: Record<string, unknown> = {}, viaVoice = false): Promise<unknown> {
+    if (PACED_FUNCTIONS.has(name)) {
+      pacing.current.tick(player.current?.remainingMs ?? 0);
+      if (boardInFlight.current || pacing.current.speaking || (viaVoice && !pacing.current.consumeTurn()))
+        return {
+          waitingForPlayer: true,
+          error:
+            "No move was played. Wait for the explanation to finish and for the player's next request. Do not call more board functions or describe unseen moves.",
+        };
+      boardInFlight.current = true;
+    }
     if (!["get_profile", "get_report", "get_hint", "play_move", "try_move"].includes(name)) verifiedMove.current = null;
     const checking = name === "play_move" || name === "try_move";
     if (checking) setCheckingMove(true);
@@ -243,6 +274,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     } catch (err) {
       result = { error: err instanceof Error ? err.message : String(err) };
     } finally {
+      if (PACED_FUNCTIONS.has(name)) boardInFlight.current = false;
       if (checking) setCheckingMove(false);
       if (isNext) stepping.current = false;
       if (!viaVoice) setBusy(false);
@@ -267,22 +299,13 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     }
     if (!failed && name === "show_mistake") setShownTag(String(args.tag ?? "") || null);
     if (!failed && BOARD_FUNCTIONS.has(name)) optsRef.current.onBoard?.();
-    if (
-      !failed &&
-      !viaVoice &&
-      statusRef.current === "live" &&
-      socket.current &&
-      ["start_drill", "review_attempt", "retry_position", "reset_position"].includes(name)
-    ) {
-      socket.current.injectUserMessage(
-        `Board event: ${name} already completed in the app. ${JSON.stringify(result)}. Narrate these facts without repeating that action. A preview is not a played move; call next_move before describing a reply.`,
-      );
-    }
+    if (!viaVoice) speakResult(name, result);
     bump();
     return result;
   }
 
   function stepUi(dir: StepDirection) {
+    if (pacing.current.speaking) return;
     const r = effects.step(dir);
     const d = coach.current.drill;
     if (r && d) {
@@ -291,12 +314,18 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     }
     const said = r ? frameCaptions.current.get(r.ply) : undefined;
     if (said) setCaption({ text: said, ply: r!.ply });
+    if (said && statusRef.current === "live" && socket.current) {
+      player.current?.stop();
+      pacing.current.begin(said);
+      setNarrating(true);
+      socket.current.injectAgentMessage(said);
+    }
     bump();
   }
 
   /** Forward through what was already shown, then one more ply of the pending line. */
   async function next() {
-    if (stepping.current) return;
+    if (stepping.current || pacing.current.speaking) return;
     const pos = history.current.position;
     if (pos.ply < pos.total) return stepUi("forward");
     if (coach.current.pending) await run("next_move");
@@ -317,6 +346,8 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
           break;
         }
         const content = role === "user" ? cleanUserLine(String(e.content), coach.current.drill?.exploreFen ?? null) : String(e.content);
+        if (role === "assistant" && content) pacing.current.text(content);
+        if (role === "user" && content) pacing.current.userTurn();
         if (
           role === "user" &&
           content &&
@@ -331,6 +362,10 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
       }
       case "UserStartedSpeaking":
         player.current?.stop();
+        stopExplanation();
+        break;
+      case "AgentAudioDone":
+        pacing.current.audioDone();
         break;
       case "FunctionCallCancelled":
         for (const f of (e.functions as { id: string }[]) ?? []) cancelled.current.add(f.id);
@@ -350,7 +385,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
             const saved = verifiedMove.current;
             const parsed = saved ? parseMove(saved.fen, String(args.move ?? "")) : null;
             if (saved && parsed && uciOf(parsed) === saved.uci) {
-              result = saved.result;
+              result = { ...(saved.result as object), waitingForPlayer: true, alreadyHandled: true };
               verifiedMove.current = null;
             } else if (submitting.current || checkingMove) {
               result = { error: "The app is checking a move. Wait for its verified result." };
@@ -373,7 +408,27 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
             if (!["get_profile", "get_report", "get_hint"].includes(f.name)) verifiedMove.current = null;
             result = await run(f.name, args, true);
           }
-          if (!cancelled.current.has(f.id)) s.respond(f.id, f.name, JSON.stringify(result));
+          if (!cancelled.current.has(f.id)) {
+            const narrated =
+              statusRef.current === "live" &&
+              PACED_FUNCTIONS.has(f.name) &&
+              !(result && typeof result === "object" && "waitingForPlayer" in result);
+            s.respond(
+              f.id,
+              f.name,
+              JSON.stringify(
+                narrated
+                  ? {
+                      ...(result as object),
+                      appNarrated: true,
+                    instruction: f.name==="start_clock" ? "The clock is now running on screen. Stay silent during the player's thinking time and wait for their move." :
+                      "The app speaks the verified explanation. Do not add speech, repeat it, or call another board function. Wait for the player's next request.",
+                    }
+                  : result,
+              ),
+            );
+            if (narrated) speakResult(f.name, result);
+          }
         }
         break;
       case "Error":
@@ -415,7 +470,10 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
           if (socket.current === s) void onEventRef.current(event, s);
         },
         onAudio: (chunk) => {
-          if (socket.current === s && voiceWanted.current) player.current?.play(chunk);
+          if (socket.current === s && voiceWanted.current) {
+            pacing.current.audio();
+            player.current?.play(chunk);
+          }
         },
         onClose: (reason) => {
           if (socket.current !== s) return;
@@ -494,6 +552,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     voiceRequest.current++;
     mic.current?.stop();
     player.current?.stop();
+    stopExplanation();
     setStatus("idle");
   }
 
@@ -528,7 +587,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
 
   async function playTyped(move: string) {
     const m = move.trim();
-    if (!m || submitting.current || checkingMove) return;
+    if (!m || submitting.current || checkingMove || pacing.current.speaking) return;
     addLine("user", m);
     const clockError = clockInputError(coach.current.drill?.clock);
     if (clockError) {
@@ -556,9 +615,6 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
       const result = await run(input.name, { move: input.uci });
       if (statusRef.current === "live" && socket.current) {
         verifiedMove.current = { fen: input.fen, uci: input.uci, result };
-        socket.current.injectUserMessage(
-          `Verified move result: ${JSON.stringify(result)}. The app already validated and played this move. Narrate these facts; do not replay or rejudge it. Continue with next_move one ply at a time if there is a reply.`,
-        );
       }
     } finally {
       submitting.current = false;
@@ -567,7 +623,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
   }
 
   function playBoard(from: string, to: string, promotion = "q"): boolean {
-    if (submitting.current || busy || checkingMove) return false;
+    if (submitting.current || busy || checkingMove || pacing.current.speaking) return false;
     if (clockInputError(coach.current.drill?.clock)) {
       bump();
       return false;
@@ -583,6 +639,9 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
   async function sendMessage(text: string) {
     const message = text.trim();
     if (!message) return false;
+    player.current?.stop();
+    stopExplanation();
+    pacing.current.userTurn();
     const epoch = sessionEpoch.current;
     const connection = connectAgent();
     addLine("user", message);
@@ -706,6 +765,21 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
   );
 
   const c = coach.current;
+  useEffect(() => {
+    if (!narrating) return;
+    const timer = window.setInterval(() => {
+      const missing = pacing.current.audioMissingSince;
+      if (missing !== null && Date.now() - missing > 15000) {
+        stopVoice();
+        setVoiceError("The move explanation audio did not arrive. Reconnect voice, or keep practicing with the written notes.");
+        setStatus("error");
+        return;
+      }
+      pacing.current.tick(player.current?.remainingMs ?? 0);
+      if (!pacing.current.speaking) setNarrating(false);
+    }, 50);
+    return () => window.clearInterval(timer);
+  }, [narrating]);
   const clock = c.drill?.clock;
   useEffect(() => {
     if (clock?.status !== "running") return;
@@ -742,6 +816,7 @@ export function useCoach(username: string, opts: CoachOptions = {}) {
     reportError,
     busy,
     checkingMove,
+    narrating,
     clockNow,
     chatConnecting,
     drill: c.drill,

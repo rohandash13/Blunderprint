@@ -84,4 +84,6 @@ export class Player {
   resume(): Promise<void> {
     return this.ctx.resume();
   }
+
+  get remainingMs(): number { return Math.max(0,this.nextTime-this.ctx.currentTime)*1000; }
 }

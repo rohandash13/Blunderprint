@@ -10,7 +10,7 @@ For a short recording, use `Knight_ofthelight73` or the newly analyzed `EricRose
 2. Load the sample player. Show the written profile and grid briefly: rows are patterns, columns are games, and the key explains the marks.
 3. Choose a positional drill, then click **Start voice**. Let the coach introduce itself and explain the current position.
 4. Click a piece to show the legal-move dots. Drag it or click a destination, or speak/type a move.
-5. Ask **“Where did I go wrong? Show me, then let me try again.”** The coach returns to the attempted move, explains verified replies one at a time, then brings the board back with the answer hidden. **Review my move** and **Try again** offer the same loop without voice.
+5. A wrong move returns to the original position. Ask **“Why is that wrong?”** to reopen the attempt. Wait for the explanation, then say **“Show me the reply.”** The coach shows and explains one reply, then stops. Say **“Let me try again.”** to return with the answer hidden. **See why**, **Next** and **Try again** offer the same loop without voice.
 6. Stop voice, type a question, then restart voice. The short introduction returns; the board, transcript and conversation stay in place.
 7. If time permits, open **Time trouble → Timed drill**. The position stays covered until readiness, the clock uses a recorded game-time budget or a fallback, and a legal move stops it before review.
 
@@ -22,8 +22,8 @@ End with: “Chess legality, engine lines and verdicts come from code. Deepgram 
 - Existing accounts `Knight_ofthelight73`, `DrNykterstein` and `thibault` retain their completed reports. The sample player's live timed drill was exercised in the previous rollout.
 - Blank, malformed and nonexistent usernames return explicit errors. Public admin access is blocked. Analysis reuse, caps and queue behavior have backend coverage.
 - The real voice service accepted context updates, spoke the contextual introduction twice on the same session, responded to synthetic spoken audio, stayed on the drill after a greeting, and called the hint function.
-- A real voice-agent request to revisit a mistake called `review_attempt`, stepped through ten verified plies, then called `retry_position`; the board returned to the original FEN with the answer hidden.
-- Frontend verification: 211 tests and the production build. Backend remains covered by the preceding 181 passing tests. Desktop/phone click, review and retry captures are in the linked design review.
+- The earlier recording exposed silent multi-move continuation. That behavior is replaced with runtime narration and user-turn gates. Spoken integration testing now checks wrong-move stop, optional attempt review, exactly one narrated reply, and explicit retry. Evidence is in [the pacing review](design/reviews/2026-11-13-guided-voice-pacing.md).
+- The replacement recording uses the builder's own spoken questions; its script is [here](demo-voice-script.md). The first MP4 is superseded and should not be sent as the final demonstration.
 
 “Any valid username” means an account with eligible rated blitz, rapid or classical games accessible through Lichess. Bullet-only or unrated-only accounts have no eligible games for this pipeline. Public analysis/voice limits and upstream availability still apply; a completed sample account makes the most reliable short demonstration.
 

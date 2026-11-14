@@ -5,8 +5,20 @@ import { describeResult } from "./coachText";
 import { roundUpToCell } from "./useSnapHeight";
 import type { GridGame, GridMark, Profile } from "../profile/types";
 
-const mark = (pattern: string, level: GridMark["level"], winDrop = 0.12, ply = 30): GridMark => ({ ply, pattern, level, kind: "tactical", winDrop });
-const game = (id: string, marks: GridMark[], result: GridGame["result"] = "w", color: GridGame["color"] = "white"): GridGame => ({ gameId: id, playedAt: "2026-10-01T10:00:00Z", color, result, marks });
+const mark = (pattern: string, level: GridMark["level"], winDrop = 0.12, ply = 30): GridMark => ({
+  ply,
+  pattern,
+  level,
+  kind: "tactical",
+  winDrop,
+});
+const game = (id: string, marks: GridMark[], result: GridGame["result"] = "w", color: GridGame["color"] = "white"): GridGame => ({
+  gameId: id,
+  playedAt: "2026-10-01T10:00:00Z",
+  color,
+  result,
+  marks,
+});
 const lv = { slip: 0, tricky: 0, deep: 0, unrated: 0 };
 
 function profile(grid: GridGame[], patterns: Profile["patterns"] = []): Profile {
@@ -75,7 +87,9 @@ describe("buildGrid", () => {
     const cell = g.rows[0].cells[0];
     expect(cell.col).toBe(0);
     expect(cell.marks.map((m) => m.level)).toEqual(["tricky", "slip"]);
-    expect(describeMark("Positional decisions", cell)).toBe("Positional decisions: game 1, as White, won; move 16, tricky, very costly, 1 more in this game");
+    expect(describeMark("Positional decisions", cell)).toBe(
+      "Positional decisions: game 1, as White, won; move 16, tricky, very costly, 1 more in this game",
+    );
   });
 
   it("counts every level regardless of the filter", () => {
@@ -97,11 +111,18 @@ describe("buildGrid", () => {
 
 describe("format", () => {
   it("rating chips keep standard perfs with games, fastest first", () => {
-    const chips = ratingChips({ rapid: { rating: 2478, games: 40, prog: 3 }, blitz: { rating: 2508, games: 900, prog: -10 }, puzzle: { rating: 2900, games: 50, prog: 0 }, bullet: { rating: 2300, games: 0, prog: 0 } });
+    const chips = ratingChips({
+      rapid: { rating: 2478, games: 40, prog: 3 },
+      blitz: { rating: 2508, games: 900, prog: -10 },
+      puzzle: { rating: 2900, games: 50, prog: 0 },
+      bullet: { rating: 2300, games: 0, prog: 0 },
+    });
     expect(chips.map((c) => c.label)).toEqual(["Blitz", "Rapid"]);
     expect(ratingChips(null)).toEqual([]);
     // a perf with a few games is dropped next to real ones, kept when it is all there is
-    expect(ratingChips({ bullet: { rating: 1758, games: 1, prog: 0 }, blitz: { rating: 2508, games: 389, prog: 10 } }).map((c) => c.label)).toEqual(["Blitz"]);
+    expect(
+      ratingChips({ bullet: { rating: 1758, games: 1, prog: 0 }, blitz: { rating: 2508, games: 389, prog: 10 } }).map((c) => c.label),
+    ).toEqual(["Blitz"]);
     expect(ratingChips({ bullet: { rating: 1758, games: 1, prog: 0 } }).map((c) => c.label)).toEqual(["Bullet"]);
   });
   it("signed uses a true minus", () => {
@@ -117,10 +138,36 @@ describe("format", () => {
   });
   it("estimates time left from the recent rate", () => {
     expect(estimateRemaining([{ t: 0, done: 0 }], 100)).toBeNull();
-    expect(estimateRemaining([{ t: 0, done: 10 }, { t: 10_000, done: 10 }], 100)).toBeNull();
-    expect(estimateRemaining([{ t: 0, done: 0 }, { t: 10_000, done: 20 }], 100)).toBe(40);
+    expect(
+      estimateRemaining(
+        [
+          { t: 0, done: 10 },
+          { t: 10_000, done: 10 },
+        ],
+        100,
+      ),
+    ).toBeNull();
+    expect(
+      estimateRemaining(
+        [
+          { t: 0, done: 0 },
+          { t: 10_000, done: 20 },
+        ],
+        100,
+      ),
+    ).toBe(40);
     // only the recent window counts
-    expect(estimateRemaining([{ t: 0, done: 0 }, { t: 200_000, done: 10 }, { t: 210_000, done: 30 }], 130, 60_000)).toBe(50);
+    expect(
+      estimateRemaining(
+        [
+          { t: 0, done: 0 },
+          { t: 200_000, done: 10 },
+          { t: 210_000, done: 30 },
+        ],
+        130,
+        60_000,
+      ),
+    ).toBe(50);
     expect(describeEta(null)).toMatch(/Working out/);
     expect(describeEta(30)).toBe("Less than a minute left");
     expect(describeEta(80)).toBe("About a minute left");
@@ -130,29 +177,56 @@ describe("format", () => {
 
 describe("describeResult", () => {
   it("play_move verdicts", () => {
-    expect(describeResult("play_move", { verdict: "best", spoken: "knight to f3", next: { ply: 1 } })).toBe("Knight to f3: that's the best move. Press Next to see the reply.");
-    expect(describeResult("play_move", { verdict: "repeated_mistake", spoken: "queen takes b7", next: null })).toBe("Queen takes b7: that's the move from your game. Try another.");
-    expect(describeResult("play_move", { verdict: "other", spoken: "pawn to e4" })).toBe("Pawn to e4: there's a stronger move here.");
-    expect(describeResult("play_move", { verdict: "illegal", reason: 'No single legal move matches "Zz9"' })).toBe('No single legal move matches "Zz9".');
+    expect(describeResult("play_move", { verdict: "best", spoken: "knight to f3", next: { ply: 1 } })).toBe(
+      "Knight to f3: that's the best move. Press Next to see the reply.",
+    );
+    expect(describeResult("play_move", { verdict: "repeated_mistake", spoken: "queen takes b7", next: null })).toBe(
+      "Queen takes b7: that's the mistake from your game. Try another move, or choose See why.",
+    );
+    expect(describeResult("play_move", { verdict: "other", spoken: "pawn to e4" })).toBe(
+      "Pawn to e4: there's a stronger move here. Try again, or choose See why.",
+    );
+    expect(describeResult("play_move", { verdict: "illegal", reason: 'No single legal move matches "Zz9"' })).toBe(
+      'No single legal move matches "Zz9".',
+    );
   });
   it("next_move caption, with the eval on the last ply", () => {
-    expect(describeResult("next_move", { caption: "Black takes on d5 with the knight", done: false })).toBe("Black takes on d5 with the knight.");
-    expect(describeResult("next_move", { caption: "White castles kingside", done: true, evalSpoken: "you're a pawn up" })).toBe("White castles kingside. You're a pawn up.");
+    expect(describeResult("next_move", { caption: "Black takes on d5 with the knight", done: false })).toBe(
+      "Black takes on d5 with the knight. This is the engine's recommended continuation; there is no immediate capture or check. Say next when you're ready to continue.",
+    );
+    expect(describeResult("next_move", { caption: "White castles kingside", done: true, evalSpoken: "you're a pawn up" })).toBe(
+      "White castles kingside. This is the engine's recommended continuation; there is no immediate capture or check. You're a pawn up. Say next when you're ready to continue.",
+    );
   });
   it("hints, reveal, errors, unknown", () => {
     expect(describeResult("get_hint", { hint: "Look at checks.", level: 1 })).toBe("Hint 1 of 3: Look at checks.");
-    expect(describeResult("get_hint", { hint: null, message: "No hints left. Offer to reveal the answer." })).toBe("No hints left. Offer to reveal the answer.");
-    expect(describeResult("reveal_answer", { bestSpoken: "rook to e8", gameMoveSpoken: "king to h1" })).toBe("The best move was rook to e8. In the game you played king to h1.");
+    expect(describeResult("get_hint", { hint: null, message: "No hints left. Offer to reveal the answer." })).toBe(
+      "No hints left. Offer to reveal the answer.",
+    );
+    expect(describeResult("reveal_answer", { bestSpoken: "rook to e8", gameMoveSpoken: "king to h1" })).toBe(
+      "The best move was rook to e8. In the game you played king to h1.",
+    );
     expect(describeResult("next_move", { error: "There is no line to continue." })).toBe("There is no line to continue.");
-    expect(describeResult("start_drill", { error: 'pattern "positional" has no examples' })).toBe("No positions for this pattern at this difficulty. Turn on another level.");
-    expect(describeResult("start_drill", { status: "Position ready, White to move", difficultyNote: "a tactic a few moves deep" })).toBe("Position ready, White to move.");
-    expect(describeResult("step_line", { ply: 1, total: 2 })).toBeNull();
+    expect(describeResult("start_drill", { error: 'pattern "positional" has no examples' })).toBe(
+      "No positions for this pattern at this difficulty. Turn on another level.",
+    );
+    expect(describeResult("start_drill", { status: "Position ready, White to move", difficultyNote: "a tactic a few moves deep" })).toBe(
+      "Position ready, White to move.",
+    );
+    expect(describeResult("step_line", { ply: 1, total: 2 })).toContain("position you requested");
     expect(describeResult("x", null)).toBeNull();
   });
 });
 
 describe("roundUpToCell", () => {
   it("rounds a height up to whole cells, tolerating sub-pixel noise", () => {
-    expect([roundUpToCell(0), roundUpToCell(1), roundUpToCell(24), roundUpToCell(24.004), roundUpToCell(131.5), roundUpToCell(144)]).toEqual([0, 24, 24, 24, 144, 144]);
+    expect([
+      roundUpToCell(0),
+      roundUpToCell(1),
+      roundUpToCell(24),
+      roundUpToCell(24.004),
+      roundUpToCell(131.5),
+      roundUpToCell(144),
+    ]).toEqual([0, 24, 24, 24, 144, 144]);
   });
 });

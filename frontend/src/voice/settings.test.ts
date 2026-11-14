@@ -5,7 +5,7 @@ describe("buildSettings", () => {
   const s = buildSettings(DEFAULT_CONFIG, "alice") as any;
   it("leaves legality to code and narrates verified UI moves without replaying them", () => {
     expect(s.agent.think.prompt).toContain("Never reject a move without calling play_move");
-    expect(s.agent.think.prompt).toContain("Verified move result");
+    expect(s.agent.think.prompt).toContain("appNarrated true");
     expect(s.agent.think.prompt).toContain("weaknesses");
   });
 
@@ -53,8 +53,6 @@ describe("buildSettings", () => {
       "spoken",
       "uncategorized mistakes",
       "attacks two pieces",
-      "evalSpoken",
-      "materialForYou",
       "set_levels",
       "step_line",
       "get_profile",
@@ -71,8 +69,8 @@ describe("buildSettings", () => {
     expect(s.agent.think.prompt).toContain("A greeting alone is not a request for a profile overview");
     expect(s.agent.think.prompt).toContain("two to three sentence overview");
     expect(s.agent.think.prompt).toContain("offer focus choices");
-    expect(s.agent.think.prompt).toContain("keep calling next_move until done is true");
-    expect(s.agent.think.prompt).toContain("Never explain several moves at once");
+    expect(s.agent.think.prompt).toContain("Never chain next_move calls");
+    expect(s.agent.think.prompt).toContain("never silently fast-forward");
     expect(s.agent.think.prompt).not.toContain("engineLine");
     expect(typeof s.agent.greeting).toBe("string");
   });
